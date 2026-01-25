@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>嵇志豪的个人网站</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="bg-overlay"></div>
+
+    <button class="back-btn" onclick="history.back()">←</button>
+
+    <header class="topbar">
+        <nav class="nav">
+            <a href="#home" class="nav-item" data-key="nav.home">首页</a>
+            <a href="#projects" class="nav-item" data-key="nav.projects">项目</a>
+            <a href="#categories" class="nav-item" data-key="nav.categories">分类</a>
+            <a href="#board" class="nav-item" data-key="nav.board">留言板</a>
+        </nav>
+        <div class="actions">
+            <button id="langBtn">EN</button>
+        </div>
+    </header>
+
+    <main id="app" class="container"></main>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
