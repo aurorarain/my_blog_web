@@ -1,11 +1,14 @@
 // 配置区：将下面的 BG_IMAGE、USER_* 替换为你的内容
-const BG_IMAGE = '' // 在这里填入背景图地址，例如 'https://example.com/bg.jpg'
-const USER_PHOTO = '' // 个人照片地址
-const USER_NAME = '你的名字'
-const USER_BIO = '在此写入个人简介。可以包含职业、技能、经验等简短描述。'
+const BG_IMAGE = 'background.png' // 使用工作区内的 background.png 作为背景图
+const USER_PHOTO = 'my_photo.png' // 个人照片地址
+// 首页内容请分别填写中/英文（手工维护）
+const USER_NAME_ZH = '嵇志豪'
+const USER_BIO_ZH = '在此写入中文个人简介。可以包含职业、技能、经验等简短描述。'
+const USER_NAME_EN = 'ZhoJimmy'
+const USER_BIO_EN = 'Write your English bio here. Short summary of your role, skills and experience.'
 const USER_CONTACT = [
-    { type: 'Email', value: 'you@example.com' },
-    { type: 'GitHub', value: 'https://github.com/yourname' }
+    { type: 'Email', value: '1839735394@qq.com' },
+    { type: 'GitHub', value: 'https://github.com/aurorarain' }
 ]
 
 // 多语言文案
@@ -13,12 +16,12 @@ const i18n = {
     zh: {
         'nav.home': '首页', 'nav.projects': '项目', 'nav.categories': '分类', 'nav.board': '留言板',
         'home.title': '关于我', 'home.contact': '联系方式', 'projects.title': '我的项目',
-        'categories.title': '分类', 'board.title': '留言板', 'board.placeholder': '输入留言内容...', 'board.nick': '昵称（可留空）', 'board.post': '发布'
+        'categories.title': '分类', 'board.title': '留言板', 'board.placeholder': '请输入留言', 'board.nick': '请输入昵称', 'board.pwd': '请输入密码(用于删除留言)', 'board.post': '发布'
     },
     en: {
         'nav.home': 'Home', 'nav.projects': 'Projects', 'nav.categories': 'Categories', 'nav.board': 'Board',
         'home.title': 'About Me', 'home.contact': 'Contact', 'projects.title': 'Projects',
-        'categories.title': 'Categories', 'board.title': 'Message Board', 'board.placeholder': 'Write a message...', 'board.nick': 'Nickname (optional)', 'board.post': 'Post'
+        'categories.title': 'Categories', 'board.title': 'Message Board', 'board.placeholder': 'Please enter a message', 'board.nick': 'Please enter a nickname', 'board.pwd': 'Enter password (for deletion)', 'board.post': 'Post'
     }
 }
 
@@ -38,6 +41,28 @@ const sampleProjects = [
 
 const categories = ['随笔', '编程技术', '算法', '计算机知识', '英语', '数学']
 
+// 翻译缓存（内存），减少重复请求
+const _trCache = new Map()
+
+// 自动翻译函数：使用 MyMemory 公共 API，注意它可能存在速率限制
+async function translateText(text, targetLang = 'en') {
+    if (!text) return text
+    const key = targetLang + '::' + text
+    if (_trCache.has(key)) return _trCache.get(key)
+    try {
+        const langpair = targetLang === 'en' ? 'zh|en' : 'en|zh'
+        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${langpair}`
+        const res = await fetch(url)
+        const j = await res.json()
+        const translated = j && j.responseData && j.responseData.translatedText ? j.responseData.translatedText : text
+        _trCache.set(key, translated)
+        return translated
+    } catch (e) {
+        console.warn('translateText error', e)
+        return text
+    }
+}
+
 // 路由
 function router() {
     const hash = location.hash.replace('#', '') || 'home'
@@ -54,41 +79,61 @@ function renderPage(page) {
 }
 
 function renderHome(root) {
+    const name = currentLang === 'zh' ? USER_NAME_ZH : USER_NAME_EN
+    const bio = currentLang === 'zh' ? USER_BIO_ZH : USER_BIO_EN
     root.innerHTML = `
-    <section class="card home-grid">
-      <img class="avatar" src="${USER_PHOTO || 'https://via.placeholder.com/400x400?text=Photo'}" alt="avatar">
-      <div>
-        <h2>${USER_NAME}</h2>
-        <p>${USER_BIO}</p>
-        <h3>${t('home.contact')}</h3>
-        <div class="contact-list">
-          ${USER_CONTACT.map(c => `<div class="contact-item"><strong>${c.type}:</strong><span>${c.value}</span></div>`).join('')}
-        </div>
-      </div>
-    </section>
-  `
+        <section class="card home-grid">
+            <img class="avatar" src="${USER_PHOTO || 'https://via.placeholder.com/400x400?text=Photo'}" alt="avatar">
+            <div>
+                <h2>${name}</h2>
+                <p>${bio}</p>
+                <h3>${t('home.contact')}</h3>
+                <div class="contact-list">
+                    ${USER_CONTACT.map(c => `<div class="contact-item"><strong>${c.type}:</strong><span>${c.value}</span></div>`).join('')}
+                </div>
+            </div>
+        </section>
+    `
 }
 
 function renderProjects(root) {
     root.innerHTML = `<section class="card"><h2>${t('projects.title')}</h2><div class="projects-grid">${sampleProjects.map(p => `
-    <div class="project-card">
-      <img src="${p.icon || 'https://via.placeholder.com/80'}" alt="icon">
-      <div>
-        <a href="#project-${p.id}" class="proj-link">${p.title}</a>
-        <p>${p.desc}</p>
-      </div>
-    </div>
-  `).join('')}</div></section>`
+        <div class="project-card">
+            <img src="${p.icon || 'https://via.placeholder.com/80'}" alt="icon">
+            <div>
+                <a href="#project-${p.id}" class="proj-link">${p.title}</a>
+                <p class="proj-desc">${p.desc}</p>
+            </div>
+        </div>
+    `).join('')}</div></section>`
 
     // 点击项目跳转到独立页面
     document.querySelectorAll('.proj-link').forEach(a => a.addEventListener('click', e => {
         e.preventDefault(); const id = e.target.getAttribute('href').replace('#project-', ''); renderProjectDetail(id)
     }))
+
+    // 自动翻译项目标题与简介（非留言板）
+    if (currentLang === 'en') {
+        sampleProjects.forEach((p, i) => {
+            translateText(p.title, 'en').then(tt => {
+                const a = document.querySelectorAll('.proj-link')[i]
+                if (a) a.innerText = tt
+            })
+            translateText(p.desc, 'en').then(td => {
+                const ps = document.querySelectorAll('.projects-grid .proj-desc')
+                if (ps[i]) ps[i].innerText = td
+            })
+        })
+    }
 }
 
 function renderProjectDetail(id) {
     const p = sampleProjects.find(x => x.id == id) || { title: '未找到', desc: '' }
-    document.getElementById('app').innerHTML = `<section class="card"><a href="#projects">← 返回</a><h2>${p.title}</h2><p>${p.desc}</p></section>`
+    document.getElementById('app').innerHTML = `<section class="card"><a href="#projects">← 返回</a><h2 class="pd-title">${p.title}</h2><p class="pd-desc">${p.desc}</p></section>`
+    if (currentLang === 'en') {
+        translateText(p.title, 'en').then(tt => { const el = document.querySelector('.pd-title'); if (el) el.innerText = tt })
+        translateText(p.desc, 'en').then(td => { const el = document.querySelector('.pd-desc'); if (el) el.innerText = td })
+    }
 }
 
 function renderCategories(root) {
@@ -110,7 +155,13 @@ function renderPostsForCategory(cat) {
         { title: `${cat} 示例文章 3`, desc: '文章简介示例。', cover: 'https://via.placeholder.com/320x180' },
     ]
     const el = document.getElementById('posts')
-    el.innerHTML = posts.map(p => `<div class="post card"><img src="${p.cover}"><div><h4>${p.title}</h4><p>${p.desc}</p></div></div>`).join('')
+    el.innerHTML = posts.map(p => `<div class="post card"><img src="${p.cover}"><div><h4 class="post-title">${p.title}</h4><p class="post-desc">${p.desc}</p></div></div>`).join('')
+    if (currentLang === 'en') {
+        posts.forEach((p, i) => {
+            translateText(p.title, 'en').then(tt => { const tEls = document.querySelectorAll('#posts .post-title'); if (tEls[i]) tEls[i].innerText = tt })
+            translateText(p.desc, 'en').then(td => { const dEls = document.querySelectorAll('#posts .post-desc'); if (dEls[i]) dEls[i].innerText = td })
+        })
+    }
 }
 
 // 留言板
