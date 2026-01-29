@@ -12,6 +12,66 @@
     box-sizing: border-box
 }
 
+/* Modal editor */
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50
+}
+
+.modal {
+    background: #fff;
+    border-radius: 10px;
+    padding: 16px;
+    max-width: 900px;
+    width: 92%;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    color: var(--text-color)
+}
+
+.modal .row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 8px
+}
+
+.modal label {
+    width: 100px;
+    flex-shrink: 0;
+    color: var(--muted)
+}
+
+.modal input[type="text"],
+.modal input[type="url"],
+.modal textarea,
+.modal select {
+    flex: 1;
+    padding: 8px;
+    border: 1px solid #e6e6e6;
+    border-radius: 6px
+}
+
+.modal textarea {
+    min-height: 200px;
+    resize: vertical
+}
+
+.modal .actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 10px
+}
+
+.small-muted {
+    font-size: 12px;
+    color: var(--muted)
+}
+
 html,
 body {
     height: 100%;
@@ -136,24 +196,7 @@ body {
     align-items: center
 }
 
-.projects-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 16px
-}
-
-.project-card {
-    display: flex;
-    gap: 12px;
-    align-items: center
-}
-
-.project-card img {
-    width: 56px;
-    height: 56px;
-    border-radius: 8px;
-    object-fit: cover
-}
+/* project styles removed (projects page was removed) */
 
 .categories {
     display: flex;

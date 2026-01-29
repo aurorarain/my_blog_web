@@ -14,13 +14,13 @@ const USER_CONTACT = [
 // 多语言文案
 const i18n = {
     zh: {
-        'nav.home': '首页', 'nav.projects': '项目', 'nav.categories': '分类', 'nav.board': '留言板',
-        'home.title': '关于我', 'home.contact': '联系方式', 'projects.title': '我的项目',
+        'nav.home': '首页', 'nav.categories': '博客', 'nav.board': '留言板',
+        'home.title': '关于我', 'home.contact': '联系方式',
         'categories.title': '分类', 'board.title': '留言板', 'board.placeholder': '请输入留言', 'board.nick': '请输入昵称', 'board.pwd': '请输入密码(用于删除留言)', 'board.post': '发布'
     },
     en: {
-        'nav.home': 'Home', 'nav.projects': 'Projects', 'nav.categories': 'Categories', 'nav.board': 'Board',
-        'home.title': 'About Me', 'home.contact': 'Contact', 'projects.title': 'Projects',
+        'nav.home': 'Home', 'nav.categories': 'Categories', 'nav.board': 'Board',
+        'home.title': 'About Me', 'home.contact': 'Contact',
         'categories.title': 'Categories', 'board.title': 'Message Board', 'board.placeholder': 'Please enter a message', 'board.nick': 'Please enter a nickname', 'board.pwd': 'Enter password (for deletion)', 'board.post': 'Post'
     }
 }
@@ -33,13 +33,158 @@ function setBackground() {
     if (BG_IMAGE && BG_IMAGE.trim()) { document.documentElement.style.setProperty('--bg-url', `url('${BG_IMAGE}')`) }
 }
 
-// Sample data: 用户可在此替换或由后端填充
-const sampleProjects = [
-    { id: 1, title: '示例项目 A', desc: '项目简介示例。', icon: '' },
-    { id: 2, title: '示例项目 B', desc: '项目简介示例。', icon: '' }
+// Posts 存储（仅 article），保存在 localStorage
+const MASTER = 'jzh0128' // 主密码：用于发布/编辑/删除文章
+
+const sampleArticles = [
+    { id: 1, type: 'article', title: '示例文章 A', desc: '文章简介示例。', cover: '', content: '# 示例文章 A\n\n这是文章的 Markdown 内容示例。', category: '随笔' },
+    { id: 2, type: 'article', title: '示例文章 B', desc: '另一篇示例文章。', cover: '', content: '# 示例文章 B\n\n内容示例...', category: '编程技术' }
 ]
 
+function getPosts() {
+    const raw = localStorage.getItem('myblog_posts')
+    if (!raw) { localStorage.setItem('myblog_posts', JSON.stringify(sampleArticles)); return sampleArticles.slice() }
+    try { return JSON.parse(raw) } catch (e) { return sampleArticles.slice() }
+}
+
+function savePosts(posts) { localStorage.setItem('myblog_posts', JSON.stringify(posts)) }
+
 const categories = ['随笔', '编程技术', '算法', '计算机知识', '英语', '数学']
+
+// --- GitHub Repository Contents API helpers (create/update/delete) ---
+const GITHUB_API_BASE = 'https://api.github.com';
+const REPO_OWNER = 'aurorarain'; // 已由用户提供
+const REPO_NAME = 'my_blog_web_storage'; // 已由用户提供
+const REPO_BRANCH = 'main'; // 默认分支
+// 分类到仓库路径的映射（用户提供）
+const REPO_PATH_MAP = {
+    '随笔': 'Essay',
+    '编程技术': 'Coding',
+    '算法': 'Algorithm',
+    '计算机知识': 'CSKnowledge',
+    '英语': 'English',
+    '数学': 'Math'
+};
+
+// 全局 base64 助手：UTF-8 安全
+function toBase64(str) { return btoa(unescape(encodeURIComponent(str))); }
+function arrayBufferToBase64(buffer) { let binary = ''; const bytes = new Uint8Array(buffer); const len = bytes.byteLength; for (let i = 0; i < len; i++) binary += String.fromCharCode(bytes[i]); return btoa(binary); }
+
+// 通用的通过 Contents API 上传任意内容（Base64 编码）
+async function uploadContentToRepo(targetPath, base64Content, token, message = 'Update content') {
+    const fileUrl = `${GITHUB_API_BASE}/repos/${REPO_OWNER}/${REPO_NAME}/contents/${targetPath}`;
+    const headers = { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' };
+
+    // 检查是否存在以获取 sha
+    let sha = null;
+    try {
+        const resCheck = await fetch(fileUrl, { headers });
+        if (resCheck.ok) {
+            const d = await resCheck.json(); sha = d.sha
+        }
+    } catch (e) { console.warn('check exist error', e) }
+
+    const body = { message, content: base64Content, branch: REPO_BRANCH };
+    if (sha) body.sha = sha;
+
+    const res = await fetch(fileUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
+    if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error('文件上传失败: ' + res.status + ' ' + text);
+    }
+    const j = await res.json();
+    return { sha: j.content && j.content.sha, path: j.content && j.content.path };
+}
+
+// 专门用于文章 Markdown 上传：根据文章分类映射到对应目录
+async function uploadFileToRepo(post, token) {
+    const folder = REPO_PATH_MAP[post.category] || REPO_PATH_MAP['随笔'] || '';
+    const filename = (post.title || 'post').replace(/[^a-z0-9]/ig, '_') + '.md';
+    const targetPath = folder ? `${folder}/${filename}` : filename;
+    const content = toBase64(`# ${post.title}\n\n${post.content || ''}`);
+    return await uploadContentToRepo(targetPath, content, token, `Update post: ${post.title}`);
+}
+
+async function deleteFileFromRepo(post, token) {
+    // 优先使用 post.repoPath（创建时保存的 path），否则根据 title+category 计算
+    const path = post.repoPath || ((REPO_PATH_MAP[post.category] || '') + '/' + (post.title || 'post').replace(/[^a-z0-9]/ig, '_') + '.md');
+    const fileUrl = `${GITHUB_API_BASE}/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}`;
+    const headers = { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' };
+
+    const res = await fetch(fileUrl, { headers });
+    if (!res.ok) throw new Error('文件不存在或无法访问: ' + res.status);
+    const data = await res.json();
+
+    const body = { message: `Delete post: ${post.title}`, sha: data.sha, branch: REPO_BRANCH };
+    const deleteRes = await fetch(fileUrl, { method: 'DELETE', headers, body: JSON.stringify(body) });
+    if (!deleteRes.ok) throw new Error('文件删除失败: ' + deleteRes.status);
+    return true;
+}
+
+// --- Full-page markdown editor for a post ---
+function renderEditPage(id) {
+    const post = getPosts().find(p => p.id == id)
+    if (!post) return alert('文章未找到')
+    document.getElementById('app').innerHTML = `<section class="card"><h2>编辑正文：${escapeHtml(post.title)}</h2>
+        <div style="display:flex;gap:12px;flex-direction:column;margin-top:8px"><textarea id="full-md" style="width:100%;min-height:400px">${escapeHtml(post.content || '')}</textarea>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px"><input id="edit-token" placeholder="GitHub Token（用于同步）" style="flex:1"/><button id="save-md">保存并同步</button><button id="cancel-md">取消</button><button id="admin-md">后台编辑</button><button id="delete-md">删除</button><button id="preview-md">预览</button></div>
+        <div id="md-preview" style="margin-top:12px"></div></div></section>`
+
+    const textarea = document.getElementById('full-md')
+    const previewEl = document.getElementById('md-preview')
+    function renderPreview() { const md = textarea.value; const out = window.marked ? marked.parse(md) : '<pre>' + escapeHtml(md) + '</pre>'; previewEl.innerHTML = out }
+    // 实时预览
+    textarea.addEventListener('input', renderPreview)
+    document.getElementById('preview-md').addEventListener('click', renderPreview)
+    renderPreview()
+
+    document.getElementById('save-md').addEventListener('click', async () => {
+        const md = document.getElementById('full-md').value
+        const token = document.getElementById('edit-token').value.trim()
+        const posts = getPosts(); const idx = posts.findIndex(p => p.id == id)
+        if (idx === -1) return alert('文章未找到')
+        posts[idx].content = md; savePosts(posts)
+        if (token) {
+            try {
+                const res = await uploadFileToRepo(posts[idx], token);
+                posts[idx].repoSha = res.sha; // 保存文件的 SHA 值
+                posts[idx].repoPath = res.path;
+                savePosts(posts);
+            } catch (e) {
+                alert('远程同步失败：' + e.message)
+                console.warn(e)
+                return
+            }
+        }
+        alert('保存成功')
+        // 保存后返回文章页
+        location.hash = 'post-' + id
+    })
+
+    document.getElementById('cancel-md').addEventListener('click', () => { location.hash = 'post-' + id })
+    document.getElementById('admin-md').addEventListener('click', () => { openEditor({ mode: 'edit', post }) })
+
+    document.getElementById('delete-md').addEventListener('click', async () => {
+        const token = document.getElementById('edit-token').value.trim()
+        const posts = getPosts(); const idx = posts.findIndex(p => p.id == id)
+        if (idx === -1) return alert('文章未找到')
+
+        if (token) {
+            try {
+                await deleteFileFromRepo(posts[idx], token);
+                posts.splice(idx, 1); // 从本地删除文章
+                savePosts(posts);
+            } catch (e) {
+                alert('远程删除失败：' + e.message)
+                console.warn(e)
+                return
+            }
+        }
+
+        alert('删除成功')
+        location.hash = 'categories'
+    })
+}
 
 // 翻译缓存（内存），减少重复请求
 const _trCache = new Map()
@@ -66,13 +211,17 @@ async function translateText(text, targetLang = 'en') {
 // 路由
 function router() {
     const hash = location.hash.replace('#', '') || 'home'
+    // 支持编辑页面路由：edit-<id>，文章阅读路由：post-<id>
+    if (hash.startsWith('edit-')) return renderEditPage(hash.replace('edit-', ''))
+    if (hash.startsWith('post-')) return renderPostDetail(hash.replace('post-', ''))
+    // 支持 categories-<cat> 路由以记录分类选择历史
+    if (hash.startsWith('categories-')) return renderCategories(document.getElementById('app'), decodeURIComponent(hash.replace('categories-', '')))
     renderPage(hash)
 }
 
 function renderPage(page) {
     const app = document.getElementById('app')
     if (page === 'home') renderHome(app)
-    else if (page === 'projects') renderProjects(app)
     else if (page === 'categories') renderCategories(app)
     else if (page === 'board') renderBoard(app)
     else renderHome(app)
@@ -96,72 +245,67 @@ function renderHome(root) {
     `
 }
 
-function renderProjects(root) {
-    root.innerHTML = `<section class="card"><h2>${t('projects.title')}</h2><div class="projects-grid">${sampleProjects.map(p => `
-        <div class="project-card">
-            <img src="${p.icon || 'https://via.placeholder.com/80'}" alt="icon">
-            <div>
-                <a href="#project-${p.id}" class="proj-link">${p.title}</a>
-                <p class="proj-desc">${p.desc}</p>
-            </div>
-        </div>
-    `).join('')}</div></section>`
+// Projects page removed per user request
 
-    // 点击项目跳转到独立页面
-    document.querySelectorAll('.proj-link').forEach(a => a.addEventListener('click', e => {
-        e.preventDefault(); const id = e.target.getAttribute('href').replace('#project-', ''); renderProjectDetail(id)
-    }))
-
-    // 自动翻译项目标题与简介（非留言板）
-    if (currentLang === 'en') {
-        sampleProjects.forEach((p, i) => {
-            translateText(p.title, 'en').then(tt => {
-                const a = document.querySelectorAll('.proj-link')[i]
-                if (a) a.innerText = tt
-            })
-            translateText(p.desc, 'en').then(td => {
-                const ps = document.querySelectorAll('.projects-grid .proj-desc')
-                if (ps[i]) ps[i].innerText = td
-            })
-        })
-    }
-}
-
-function renderProjectDetail(id) {
-    const p = sampleProjects.find(x => x.id == id) || { title: '未找到', desc: '' }
-    document.getElementById('app').innerHTML = `<section class="card"><a href="#projects">← 返回</a><h2 class="pd-title">${p.title}</h2><p class="pd-desc">${p.desc}</p></section>`
+// 阅读文章（分类文章）的完整页面，Markdown 渲染为 HTML
+function renderPostDetail(id) {
+    const p = getPosts().find(x => x.id == id) || { title: '未找到', desc: '', content: '' }
+    // 不在正文内渲染“返回”文字按钮，使用页面左上角的箭头（history.back）处理返回
+    document.getElementById('app').innerHTML = `<section class="card"><div style="display:flex;justify-content:space-between;align-items:center"><h2 class="pd-title">${escapeHtml(p.title)}</h2><div><button id="jump-edit">编辑</button></div></div><p class="pd-desc">${escapeHtml(p.desc)}</p><hr/><div class="pd-content">${p.content ? (window.marked ? marked.parse(p.content) : '<pre>' + escapeHtml(p.content) + '</pre>') : ''}</div></section>`
+    // 文章页面增加跳转到编辑页
+    const jumpBtn = document.getElementById('jump-edit')
+    if (jumpBtn) jumpBtn.addEventListener('click', () => { location.hash = 'edit-' + id })
     if (currentLang === 'en') {
         translateText(p.title, 'en').then(tt => { const el = document.querySelector('.pd-title'); if (el) el.innerText = tt })
         translateText(p.desc, 'en').then(td => { const el = document.querySelector('.pd-desc'); if (el) el.innerText = td })
     }
 }
 
-function renderCategories(root) {
-    root.innerHTML = `<section class="card"><h2>${t('categories.title')}</h2>
-    <div class="categories">${categories.map((c, i) => `<button class="cat-btn" data-cat="${i}">${c}</button>`).join('')}</div>
-    <div id="posts" class="posts-grid"></div>
-  </section>`
+function renderCategories(root, selectedCat) {
+    // 在分类列表前增加“全部”选项
+    root.innerHTML = `<section class="card"><div style="display:flex;justify-content:space-between;align-items:center"><h2>${t('categories.title')}</h2><div><button id="addArticleBtn">发布文章</button></div></div>
+        <div class="categories"><button class="cat-btn" data-cat="all">全部</button>${categories.map((c, i) => `<button class="cat-btn" data-cat="${c}">${c}</button>`).join('')}</div>
+        <div id="posts" class="posts-grid"></div>
+    </section>`
 
     document.querySelectorAll('.cat-btn').forEach(btn => btn.addEventListener('click', e => {
-        const idx = +e.currentTarget.dataset.cat; renderPostsForCategory(categories[idx])
+        const catKey = e.currentTarget.dataset.cat
+        // 使用 hash 导航，这样会记录选择的分类到历史记录，方便回退
+        location.hash = 'categories-' + encodeURIComponent(catKey)
     }))
+
+    document.getElementById('addArticleBtn').addEventListener('click', () => openEditor({ mode: 'create', type: 'article' }))
+
+    // 如果通过路由指定了选中分类，则展示对应内容，否则默认显示“全部”分类
+    if (selectedCat) renderPostsForCategory(selectedCat)
+    else renderPostsForCategory('all')
 }
 
 function renderPostsForCategory(cat) {
-    // 示例两篇文章，用户可替换为真实数据
-    const posts = [
-        { title: `${cat} 示例文章 1`, desc: '文章简介示例。', cover: 'https://via.placeholder.com/320x180' },
-        { title: `${cat} 示例文章 2`, desc: '文章简介示例。', cover: 'https://via.placeholder.com/320x180' },
-        { title: `${cat} 示例文章 3`, desc: '文章简介示例。', cover: 'https://via.placeholder.com/320x180' },
-    ]
+    let posts
+    if (cat === 'all') {
+        // 全部：显示所有文章类型为 article 的文章
+        posts = getPosts().filter(p => p.type === 'article')
+    } else {
+        posts = getPosts().filter(p => p.type === 'article' && p.category === cat)
+    }
     const el = document.getElementById('posts')
-    el.innerHTML = posts.map(p => `<div class="post card"><img src="${p.cover}"><div><h4 class="post-title">${p.title}</h4><p class="post-desc">${p.desc}</p></div></div>`).join('')
+    el.innerHTML = posts.map(p => `<div class="post card" data-id="${p.id}"><img src="${p.cover || 'https://via.placeholder.com/320x180'}"><div><h4 class="post-title">${p.title}</h4><p class="post-desc">${p.desc}</p></div><div style="margin-left:auto"><button class="edit-post" data-id="${p.id}">编辑</button><button class="del-post" data-id="${p.id}">删除</button></div></div>`).join('')
     if (currentLang === 'en') {
         posts.forEach((p, i) => {
             translateText(p.title, 'en').then(tt => { const tEls = document.querySelectorAll('#posts .post-title'); if (tEls[i]) tEls[i].innerText = tt })
             translateText(p.desc, 'en').then(td => { const dEls = document.querySelectorAll('#posts .post-desc'); if (dEls[i]) dEls[i].innerText = td })
         })
     }
+
+    // 点击卡片打开文章详情（使用 hash 导航以保留历史记录）
+    document.querySelectorAll('#posts .post').forEach(card => card.addEventListener('click', e => {
+        const id = card.dataset.id
+        location.hash = 'post-' + id
+    }))
+
+    document.querySelectorAll('#posts .edit-post').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); const id = +e.currentTarget.dataset.id; const post = getPosts().find(p => p.id === id); openEditor({ mode: 'edit', post }) }))
+    document.querySelectorAll('#posts .del-post').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); const id = +e.currentTarget.dataset.id; deletePost(id) }))
 }
 
 // 留言板
@@ -232,9 +376,159 @@ function tryDelete(idx) {
     alert('密码错误，无法删除')
 }
 
+// Post management: editor modal, create/edit/delete posts (protected by MASTER password)
+function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
+    // create modal DOM
+    const backdrop = document.createElement('div'); backdrop.className = 'modal-backdrop'
+    const modal = document.createElement('div'); modal.className = 'modal'
+    modal.innerHTML = `
+        <div><strong>${mode === 'create' ? '发布文章' : '编辑文章'}</strong></div>
+        <div class="row"><label>封面</label><input id="ed-cover" type="url" placeholder="封面图片地址 (可选)"></div>
+        <div class="row"><label>本地封面</label><input id="ed-cover-file" type="file" accept="image/*" /></div>
+        <div class="row"><label>导入</label><input id="ed-import" type="file" accept=".md" /></div>
+        <div class="row"><label>标题</label><input id="ed-title" type="text" placeholder="文章标题"></div>
+        <div class="row"><label>简介</label><input id="ed-desc" type="text" placeholder="文章简介"></div>
+        <div class="row" id="ed-cat-row"><label>分类</label><select id="ed-cat">${categories.map(c => `<option>${c}</option>`).join('')}</select></div>
+        <div class="row"><label>远程</label><label style="flex:1"><input id="ed-remote" type="checkbox"> 发布到远程（GitHub 仓库）</label></div>
+        <div class="row"><label>Token</label><input id="ed-token" type="text" placeholder="可选：GitHub Personal Access Token（编辑时输入）"></div>
+        <div class="row"><label>密码</label><input id="ed-pwd" type="text" placeholder="输入主密码以确认发布/编辑"></div>
+        <div class="actions"><button id="ed-open-full" style="margin-right:auto">编辑/预览正文</button><button id="ed-cancel">取消</button><button id="ed-save">保存</button></div>
+    `
+    backdrop.appendChild(modal); document.body.appendChild(backdrop)
+
+    // prefill
+    const cover = modal.querySelector('#ed-cover')
+    const coverFile = modal.querySelector('#ed-cover-file')
+    const title = modal.querySelector('#ed-title')
+    const desc = modal.querySelector('#ed-desc')
+    const cat = modal.querySelector('#ed-cat')
+    const pwd = modal.querySelector('#ed-pwd')
+    const importInput = modal.querySelector('#ed-import')
+    const openFull = modal.querySelector('#ed-open-full')
+    const catRow = modal.querySelector('#ed-cat-row')
+    let importContent = ''
+    if (post) { cover.value = post.cover || post.icon || ''; title.value = post.title || ''; desc.value = post.desc || ''; if (post.category) { [...cat.options].forEach(o => { if (o.value === post.category) o.selected = true }) }; importContent = post.content || '' }
+
+    modal.querySelector('#ed-cancel').addEventListener('click', () => { document.body.removeChild(backdrop) })
+    // 导入 .md 文件
+    importInput.addEventListener('change', e => {
+        const f = e.target.files && e.target.files[0]
+        if (!f) return
+        const reader = new FileReader()
+        reader.onload = () => { importContent = reader.result }
+        reader.readAsText(f)
+    })
+
+    // 打开全文编辑页（不在模态内编辑）
+    openFull.addEventListener('click', () => {
+        const provided = pwd.value || ''
+        if (mode === 'create') {
+            if (provided !== MASTER) return alert('密码错误：需要主密码以发布/编辑文章')
+            const id = Date.now()
+            const newPost = { id, type: 'article', cover: cover.value.trim(), icon: cover.value.trim(), title: title.value.trim(), desc: desc.value.trim(), category: cat.value, content: importContent || '' }
+            const posts = getPosts(); posts.unshift(newPost); savePosts(posts)
+            document.body.removeChild(backdrop); location.hash = 'edit-' + id; return
+        } else {
+            const posts = getPosts(); const idx = posts.findIndex(p => p.id === post.id)
+            if (idx === -1) return alert('文章未找到')
+            const providedPwd = pwd.value || ''
+            if (providedPwd !== MASTER) return alert('密码错误：需要主密码以发布/编辑文章')
+            posts[idx].type = 'article'; posts[idx].cover = cover.value.trim(); posts[idx].icon = cover.value.trim(); posts[idx].title = title.value.trim(); posts[idx].desc = desc.value.trim(); posts[idx].category = cat.value
+            if (importContent) posts[idx].content = importContent
+            savePosts(posts); document.body.removeChild(backdrop); location.hash = 'edit-' + post.id; return
+        }
+    })
+
+    modal.querySelector('#ed-save').addEventListener('click', async () => {
+        const provided = pwd.value || ''
+        if (provided !== MASTER) return alert('密码错误：需要主密码以发布/编辑文章')
+        const posts = getPosts()
+        const useRemote = modal.querySelector('#ed-remote').checked
+        const tokenVal = modal.querySelector('#ed-token').value.trim()
+
+        if (mode === 'create') {
+            const id = Date.now()
+            const newPost = { id, type: 'article', cover: cover.value.trim(), icon: cover.value.trim(), title: title.value.trim(), desc: desc.value.trim(), category: cat.value, content: importContent || '' }
+            // 先写本地
+            posts.unshift(newPost); savePosts(posts)
+            // 远程发布（可选）
+            if (useRemote) {
+                if (!tokenVal) return alert('要发布到远程，请提供 GitHub Token')
+                try {
+                    // 如果选择了本地封面，先上传封面到分类目录
+                    if (coverFile && coverFile.files && coverFile.files[0]) {
+                        const f = coverFile.files[0]
+                        const buf = await new Promise((resolve, reject) => { const fr = new FileReader(); fr.onload = () => resolve(fr.result); fr.onerror = reject; fr.readAsArrayBuffer(f); })
+                        const base64 = arrayBufferToBase64(buf)
+                        const folder = REPO_PATH_MAP[cat.value] || REPO_PATH_MAP['随笔'] || ''
+                        const safeName = Date.now() + '_' + f.name.replace(/[^a-z0-9.\-]/ig, '_')
+                        const imagePath = folder ? `${folder}/${safeName}` : safeName
+                        await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
+                        newPost.cover = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${imagePath}`
+                        // update local saved cover
+                        const psLocal = getPosts(); const idxLocal = psLocal.findIndex(p => p.id === id); if (idxLocal !== -1) { psLocal[idxLocal].cover = newPost.cover; savePosts(psLocal) }
+                    }
+                    const res = await uploadFileToRepo(newPost, tokenVal)
+                    const ps = getPosts(); const idx = ps.findIndex(p => p.id === id); if (idx !== -1) { ps[idx].repoSha = res.sha; ps[idx].repoPath = res.path; savePosts(ps) }
+                } catch (err) { alert('远程发布失败：' + err.message); console.warn(err) }
+            }
+            document.body.removeChild(backdrop); router()
+        } else {
+            // edit existing (meta only)
+            const idx = posts.findIndex(p => p.id === post.id)
+            if (idx === -1) return alert('原文章未找到')
+            posts[idx].type = 'article'; posts[idx].cover = cover.value.trim(); posts[idx].icon = cover.value.trim(); posts[idx].title = title.value.trim(); posts[idx].desc = desc.value.trim(); posts[idx].category = cat.value
+            if (importContent) posts[idx].content = importContent
+            savePosts(posts)
+            if (useRemote) {
+                if (!tokenVal) return alert('要发布到远程，请提供 GitHub Token')
+                try {
+                    // 如果选择了本地封面，先上传封面到分类目录
+                    if (coverFile && coverFile.files && coverFile.files[0]) {
+                        const f = coverFile.files[0]
+                        const buf = await new Promise((resolve, reject) => { const fr = new FileReader(); fr.onload = () => resolve(fr.result); fr.onerror = reject; fr.readAsArrayBuffer(f); })
+                        const base64 = arrayBufferToBase64(buf)
+                        const folder = REPO_PATH_MAP[posts[idx].category] || REPO_PATH_MAP['随笔'] || ''
+                        const safeName = Date.now() + '_' + f.name.replace(/[^a-z0-9.\-]/ig, '_')
+                        const imagePath = folder ? `${folder}/${safeName}` : safeName
+                        await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
+                        posts[idx].cover = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${imagePath}`
+                    }
+                    const res = await uploadFileToRepo(posts[idx], tokenVal)
+                    posts[idx].repoSha = res.sha; posts[idx].repoPath = res.path; savePosts(posts)
+                } catch (err) { alert('远程同步失败：' + err.message); console.warn(err) }
+            }
+            document.body.removeChild(backdrop); router()
+        }
+    })
+}
+
+async function deletePost(id) {
+    const input = prompt('请输入主密码以删除文章：')
+    if (input === null) return
+    if (input !== MASTER) return alert('密码错误')
+    const posts = getPosts(); const idx = posts.findIndex(p => p.id === id); if (idx === -1) return alert('文章不存在')
+    const post = posts[idx]
+    // 如果存在远程文件，尝试删除远程
+    if (post.repoPath) {
+        const token = prompt('此文章托管在远程仓库，删除请提供 GitHub Token：')
+        if (token === null) return
+        try { await deleteFileFromRepo(post, token) } catch (e) { console.warn('删除远程文件失败', e) }
+    }
+    posts.splice(idx, 1); savePosts(posts); alert('删除成功'); router()
+}
+
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[ch])) }
 
 // 绑定语言切换
+// 全局返回函数：优先使用历史记录，其次回到分类页
+function goBack() {
+    try {
+        if (history.length > 1) history.back();
+        else location.hash = 'categories'
+    } catch (e) { location.hash = 'categories' }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('langBtn').addEventListener('click', () => {
         currentLang = currentLang === 'zh' ? 'en' : 'zh'

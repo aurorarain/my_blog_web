@@ -11,12 +11,11 @@
 <body>
     <div class="bg-overlay"></div>
 
-    <button class="back-btn" onclick="history.back()">←</button>
+    <button class="back-btn" onclick="goBack()">←</button>
 
     <header class="topbar">
         <nav class="nav">
             <a href="#home" class="nav-item" data-key="nav.home">首页</a>
-            <a href="#projects" class="nav-item" data-key="nav.projects">项目</a>
             <a href="#categories" class="nav-item" data-key="nav.categories">分类</a>
             <a href="#board" class="nav-item" data-key="nav.board">留言板</a>
         </nav>
@@ -27,6 +26,8 @@
 
     <main id="app" class="container"></main>
 
+    <!-- Marked.js 用于 Markdown 渲染 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="app.js"></script>
 </body>
 
