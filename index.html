@@ -20,9 +20,8 @@
     <!-- Preload critical resources -->
     <link rel="preload" href="app.js" as="script">
     
-    <!-- EasyMDE Markdown editor - load async -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css" media="print" onload="this.media='all'">
-    <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css"></noscript>
+    <!-- Quill 富文本编辑器 -->
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
 </head>
 
 <body>
@@ -43,10 +42,9 @@
 
     <main id="app" class="container" role="main"></main>
 
-    <!-- Marked.js 用于 Markdown 渲染 - defer for better performance -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js" defer></script>
-    <script src="app.js" defer></script>
+    <!-- Quill 富文本编辑器 -->
+    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+    <script src="app.js"></script>
 </body>
 
 </html>
