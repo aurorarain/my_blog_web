@@ -1,11 +1,11 @@
 // 配置区
-const APP_VERSION = '1.0.1' // 版本号，更新后会清除旧缓存
+const APP_VERSION = '1.0.2' // 版本号，更新后会清除旧缓存
 const BG_IMAGE = 'background.png'
 const USER_PHOTO = 'my_photo.png'
 const USER_NAME_ZH = '嵇志豪'
 const USER_BIO_ZH = '你好！我是一名26届计算机科学与技术专业本科生，热爱用代码解决实际问题。熟悉 Java 后端开发与 MySQL 数据库设计，能独立完成从前端交互到后端接口、数据库搭建再到服务器部署的完整项目流程，注重代码质量与用户体验。努力学习新技术ing，期待在实战中持续成长。欢迎联系我，一起做点有意思的事！'
 const USER_NAME_EN = 'ZhoJimmy'
-const USER_BIO_EN = 'Write your English bio here. Short summary of your role, skills and experience.'
+const USER_BIO_EN = 'Hello! I am a 26th-year undergraduate student majoring in Computer Science and Technology, passionate about solving practical problems with code. Proficient in Java backend development and MySQL database design, capable of independently completing the entire project workflow from frontend interaction to backend interfaces, database setup, and server deployment. I prioritize code quality and user experience. Continuously learning new technologies, eager to grow through hands-on practice. Feel free to reach out—I\'d love to collaborate on something exciting!'
 const USER_CONTACT = [
     { type: 'Email', value: '1839735394@qq.com' },
     { type: 'GitHub', value: 'https://github.com/aurorarain' }
@@ -608,7 +608,6 @@ async function renderEditPage(id) {
     })
 }
 
-// 文章阅读页面
 function renderPostDetail(id) {
     const p = getPosts().find(x => x.id == id) || { title: '未找到', desc: '', content: '' }
 
@@ -625,7 +624,9 @@ function renderPostDetail(id) {
     </section>`
 
     const jumpBtn = document.getElementById('jump-edit')
-    if (jumpBtn) jumpBtn.addEventListener('click', () => { location.hash = 'edit-' + id })
+    if (jumpBtn) {
+        jumpBtn.addEventListener('click', () => { location.hash = 'edit-' + id })
+    }
 
     if ((!p.content || p.content.trim() === '') && p.repoPath) {
         const contentEl = document.querySelector('.pd-content')
@@ -694,21 +695,30 @@ function renderCategories(root, selectedCat) {
             <div><button id="addArticleBtn">${t('post.publish')}</button></div>
         </div>
         <div class="categories">
-            <button class="cat-btn" data-cat="all">${t('post.all')}</button>
-            ${categories.map(c => `<button class="cat-btn" data-cat="${c}">${c}</button>`).join('')}
-        </div>
+                <button class="cat-btn" data-cat="all">${t('post.all')}</button>
+                ${categories.map(c => {
+        const label = currentLang === 'zh' ? c : (REPO_PATH_MAP[c] || c)
+        return `<button class="cat-btn" data-cat="${c}">${label}</button>`
+    }).join('')}
+            </div>
         <div id="posts" class="posts-grid"></div>
     </section>`
 
     // 使用事件委托优化分类按钮点击
-    root.querySelector('.categories').addEventListener('click', function (e) {
-        if (e.target.classList.contains('cat-btn')) {
-            const catKey = e.target.dataset.cat
-            location.hash = 'categories-' + encodeURIComponent(catKey)
-        }
-    })
+    const categoriesEl = root.querySelector('.categories')
+    if (categoriesEl) {
+        categoriesEl.addEventListener('click', function (e) {
+            if (e.target.classList.contains('cat-btn')) {
+                const catKey = e.target.dataset.cat
+                location.hash = 'categories-' + encodeURIComponent(catKey)
+            }
+        })
+    }
 
-    document.getElementById('addArticleBtn').addEventListener('click', () => openEditor({ mode: 'create', type: 'article' }))
+    const addBtn = document.getElementById('addArticleBtn')
+    if (addBtn) {
+        addBtn.addEventListener('click', () => openEditor({ mode: 'create', type: 'article' }))
+    }
 
     if (selectedCat) renderPostsForCategory(selectedCat)
     else renderPostsForCategory('all')
@@ -722,6 +732,13 @@ function renderPostsForCategory(cat) {
         posts = getPosts().filter(p => p.type === 'article' && p.category === cat)
     }
     const el = document.getElementById('posts')
+    if (!el) return
+
+    // 移除旧的事件监听器
+    const oldHandler = el._clickHandler
+    if (oldHandler) {
+        el.removeEventListener('click', oldHandler)
+    }
 
     // 使用 DocumentFragment 减少 DOM 重绘
     const fragment = document.createDocumentFragment()
@@ -746,7 +763,7 @@ function renderPostsForCategory(cat) {
     el.appendChild(fragment)
 
     // 使用事件委托减少事件监听器数量
-    el.addEventListener('click', function (e) {
+    const clickHandler = function (e) {
         const target = e.target
         const card = target.closest('.post')
 
@@ -763,7 +780,10 @@ function renderPostsForCategory(cat) {
             const id = card.dataset.id
             location.hash = 'post-' + id
         }
-    })
+    }
+
+    el._clickHandler = clickHandler
+    el.addEventListener('click', clickHandler)
 }
 
 function renderBoard(root) {
@@ -908,7 +928,7 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
         <div class="row"><label>本地封面</label><input id="ed-cover-file" type="file" accept="image/*"></div>
         <div class="row"><label>标题</label><input id="ed-title" type="text" placeholder="文章标题"></div>
         <div class="row"><label>简介</label><input id="ed-desc" type="text" placeholder="文章简介"></div>
-        <div class="row"><label>分类</label><select id="ed-cat">${categories.map(c => `<option>${c}</option>`).join('')}</select></div>
+        <div class="row"><label>分类</label><select id="ed-cat">${categories.map(c => `<option value="${c}">${currentLang === 'zh' ? c : (REPO_PATH_MAP[c] || c)}</option>`).join('')}</select></div>
         <div class="row"><label>同步GitHub</label><label style="flex:1"><input id="ed-remote" type="checkbox"> 发布到 GitHub 仓库</label></div>
         <div class="row"><label>GitHub Token</label><input id="ed-token" type="password" placeholder="GitHub Personal Access Token"></div>
         <div class="row"><label>密码</label><input id="ed-pwd" type="password" placeholder="输入主密码以确认发布/编辑"></div>
@@ -1278,56 +1298,119 @@ function goBack() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 检查版本并清除旧缓存
+    // 强制清除浏览器缓存，确保始终加载最新版本
     const cachedVersion = localStorage.getItem('app_version')
-    if (cachedVersion !== APP_VERSION) {
-        console.log('New version detected, clearing cache...')
+    const isNewVersion = cachedVersion !== APP_VERSION
+    
+    if (isNewVersion) {
+        console.log('New version detected:', APP_VERSION)
         localStorage.setItem('app_version', APP_VERSION)
 
-        // 清除 Service Worker 缓存
-        if ('serviceWorker' in navigator) {
+        // 清除所有缓存
+        if ('caches' in window) {
             caches.keys().then(cacheNames => {
                 return Promise.all(
-                    cacheNames.map(cacheName => caches.delete(cacheName))
+                    cacheNames.map(cacheName => {
+                        console.log('Deleting cache:', cacheName)
+                        return caches.delete(cacheName)
+                    })
                 )
             }).then(() => {
                 console.log('All caches cleared')
-                // 强制刷新页面以加载新资源
-                if (cachedVersion) { // 只在非首次访问时刷新
-                    window.location.reload(true)
-                }
             })
         }
     }
 
-    // 注册 Service Worker
+    // 注册 Service Worker 并实现自动更新
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./sw.js?v=' + APP_VERSION)
-            .then(reg => {
-                console.log('Service Worker registered:', reg.scope)
-                // 检查更新
-                reg.update()
+        // 每次都注销旧的 Service Worker，确保使用最新版本
+        navigator.serviceWorker.getRegistrations().then(registrations => {
+            if (isNewVersion && registrations.length > 0) {
+                console.log('Unregistering old service workers...')
+                return Promise.all(registrations.map(reg => reg.unregister()))
+            }
+        }).then(() => {
+            // 注册新的 Service Worker
+            return navigator.serviceWorker.register('./sw.js?v=' + APP_VERSION, {
+                updateViaCache: 'none' // 禁用 Service Worker 脚本缓存
             })
-            .catch(err => console.warn('Service Worker registration failed:', err))
+        }).then(reg => {
+            console.log('Service Worker registered:', reg.scope)
+
+            // 立即检查更新
+            reg.update()
+
+            // 如果有等待中的 Service Worker，立即激活
+            if (reg.waiting) {
+                reg.waiting.postMessage({ type: 'SKIP_WAITING' })
+            }
+
+            // 监听新版本安装
+            reg.addEventListener('updatefound', () => {
+                const newSW = reg.installing
+                if (!newSW) return
+
+                newSW.addEventListener('statechange', () => {
+                    if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                        console.log('New Service Worker installed, activating...')
+                        newSW.postMessage({ type: 'SKIP_WAITING' })
+                    }
+                })
+            })
+
+            // 定期检查更新（每30秒）
+            setInterval(() => {
+                reg.update()
+            }, 30000)
+        }).catch(err => {
+            console.warn('Service Worker registration failed:', err)
+        })
+
+        // 监听 Service Worker 控制器变化
+        let refreshing = false
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (!refreshing) {
+                refreshing = true
+                console.log('New Service Worker activated, reloading...')
+                window.location.reload()
+            }
+        })
     }
 
-    document.getElementById('langBtn').addEventListener('click', () => {
-        currentLang = currentLang === 'zh' ? 'en' : 'zh'
-        document.getElementById('langBtn').innerText = currentLang === 'zh' ? 'EN' : '中文'
-        router()
-        document.querySelectorAll('.nav-item').forEach(a => {
-            const k = a.dataset.key
-            a.innerText = t(k)
+    // 语言切换按钮
+    const langBtn = document.getElementById('langBtn')
+    if (langBtn) {
+        langBtn.addEventListener('click', () => {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh'
+            langBtn.innerText = currentLang === 'zh' ? 'EN' : '中文'
+            router()
+            document.querySelectorAll('.nav-item').forEach(a => {
+                const k = a.dataset.key
+                a.innerText = t(k)
+            })
         })
-    })
+    }
 
+    // 初始化导航文本
     document.querySelectorAll('.nav-item').forEach(a => {
         const k = a.dataset.key
         a.innerText = t(k)
     })
 
+    // 设置背景
     setBackground()
+    
+    // 路由监听
     window.addEventListener('hashchange', router)
     router()
+
+    // 页面可见性变化时检查更新
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && 'serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistration().then(reg => {
+                if (reg) reg.update()
+            })
+        }
+    })
 })
 

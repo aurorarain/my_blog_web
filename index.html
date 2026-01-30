@@ -10,24 +10,92 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>嵇志豪的个人网站</title>
-    
+
     <!-- Preconnect to CDN for faster resource loading -->
     <link rel="preconnect" href="https://cdn.quilljs.com" crossorigin>
     <link rel="dns-prefetch" href="https://cdn.quilljs.com">
     <link rel="dns-prefetch" href="https://api.github.com">
     <link rel="dns-prefetch" href="https://raw.githubusercontent.com">
-    
+
     <!-- Critical CSS - Inline for faster first paint -->
     <style>
-        :root{--bg-url:url('background.png');--text-color:#222;--muted:#666;--card-bg:#fff;--overlay:rgba(255,255,255,0)}*{box-sizing:border-box;margin:0;padding:0}html,body{height:100%;margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background:var(--bg-url) center/cover no-repeat fixed;color:var(--text-color);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}.bg-overlay{position:fixed;inset:0;background:linear-gradient(var(--overlay),var(--overlay));backdrop-filter:blur(6px);pointer-events:none;will-change:transform}.container{position:relative;z-index:2;max-width:1000px;margin:5rem auto;padding:2rem;color:var(--text-color)}.topbar{position:fixed;left:0;right:0;top:0;height:64px;display:flex;align-items:center;justify-content:center;padding:0 1rem;z-index:3;background:rgba(255,255,255,.8);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}.card{background:var(--card-bg);border-radius:14px;padding:18px;margin-bottom:18px;border:1px solid #e9e9e9;box-shadow:0 6px 20px rgba(20,20,20,.06)}
+        :root {
+            --bg-url: url('background.png');
+            --text-color: #222;
+            --muted: #666;
+            --card-bg: #fff;
+            --overlay: rgba(255, 255, 255, 0)
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0
+        }
+
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg-url) center/cover no-repeat fixed;
+            color: var(--text-color);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale
+        }
+
+        .bg-overlay {
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(var(--overlay), var(--overlay));
+            backdrop-filter: blur(6px);
+            pointer-events: none;
+            will-change: transform
+        }
+
+        .container {
+            position: relative;
+            z-index: 2;
+            max-width: 1000px;
+            margin: 5rem auto;
+            padding: 2rem;
+            color: var(--text-color)
+        }
+
+        .topbar {
+            position: fixed;
+            left: 0;
+            right: 0;
+            top: 0;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 1rem;
+            z-index: 3;
+            background: rgba(255, 255, 255, .8);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px)
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 14px;
+            padding: 18px;
+            margin-bottom: 18px;
+            border: 1px solid #e9e9e9;
+            box-shadow: 0 6px 20px rgba(20, 20, 20, .06)
+        }
     </style>
-    
+
     <!-- Load full CSS asynchronously -->
-    <link rel="preload" href="styles.css?v=1.0.1" as="style" onload="this.onload=null;this.rel='stylesheet'">
-    <noscript><link rel="stylesheet" href="styles.css?v=1.0.1"></noscript>
-    
+    <link rel="preload" href="styles.css?v=1.0.2" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript>
+        <link rel="stylesheet" href="styles.css?v=1.0.2">
+    </noscript>
+
     <!-- Preload critical resources -->
-    <link rel="preload" href="app.js?v=1.0.1" as="script">
+    <link rel="preload" href="app.js?v=1.0.2" as="script">
 </head>
 
 <body>
@@ -50,14 +118,14 @@
 
     <!-- Load Quill only when needed -->
     <script>
-        window.loadQuill = function() {
+        window.loadQuill = function () {
             if (window.Quill) return Promise.resolve();
             return new Promise((resolve, reject) => {
                 const link = document.createElement('link');
                 link.rel = 'stylesheet';
                 link.href = 'https://cdn.quilljs.com/1.3.6/quill.snow.css';
                 document.head.appendChild(link);
-                
+
                 const script = document.createElement('script');
                 script.src = 'https://cdn.quilljs.com/1.3.6/quill.js';
                 script.onload = resolve;
@@ -66,7 +134,7 @@
             });
         };
     </script>
-    <script src="app.js?v=1.0.1" defer></script>
+    <script src="app.js?v=1.0.2" defer></script>
 </body>
 
 </html>
