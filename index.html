@@ -6,6 +6,9 @@
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
     <meta name="description" content="嵇志豪的个人博客网站，分享技术文章和个人见解">
     <meta name="theme-color" content="#ffffff">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>嵇志豪的个人网站</title>
     
     <!-- Preconnect to CDN for faster resource loading -->
@@ -20,11 +23,11 @@
     </style>
     
     <!-- Load full CSS asynchronously -->
-    <link rel="preload" href="styles.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
-    <noscript><link rel="stylesheet" href="styles.css"></noscript>
+    <link rel="preload" href="styles.css?v=1.0.1" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="styles.css?v=1.0.1"></noscript>
     
     <!-- Preload critical resources -->
-    <link rel="preload" href="app.js" as="script">
+    <link rel="preload" href="app.js?v=1.0.1" as="script">
 </head>
 
 <body>
@@ -63,7 +66,7 @@
             });
         };
     </script>
-    <script src="app.js" defer></script>
+    <script src="app.js?v=1.0.1" defer></script>
 </body>
 
 </html>

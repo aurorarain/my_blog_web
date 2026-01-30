@@ -1,5 +1,6 @@
 // Service Worker for caching static assets
-const CACHE_NAME = 'myblog-v1.0.0'
+const CACHE_VERSION = '1.0.1'
+const CACHE_NAME = 'myblog-v' + CACHE_VERSION
 const STATIC_CACHE = [
     './',
     './index.html',
@@ -41,7 +42,7 @@ self.addEventListener('activate', event => {
     self.clients.claim()
 })
 
-// Fetch event - serve from cache, fallback to network
+// Fetch event - network first for HTML, cache first for assets
 self.addEventListener('fetch', event => {
     const { request } = event
     const url = new URL(request.url)
@@ -56,25 +57,38 @@ self.addEventListener('fetch', event => {
         return
     }
     
+    // Network first strategy for HTML files
+    if (request.headers.get('accept').includes('text/html')) {
+        event.respondWith(
+            fetch(request)
+                .then(response => {
+                    const responseToCache = response.clone()
+                    caches.open(CACHE_NAME).then(cache => {
+                        cache.put(request, responseToCache)
+                    })
+                    return response
+                })
+                .catch(() => {
+                    return caches.match(request)
+                })
+        )
+        return
+    }
+    
+    // Cache first strategy for other assets
     event.respondWith(
         caches.match(request)
             .then(response => {
                 if (response) {
-                    // Return cached version
                     return response
                 }
                 
-                // Fetch from network
                 return fetch(request).then(response => {
-                    // Don't cache non-successful responses
                     if (!response || response.status !== 200 || response.type === 'error') {
                         return response
                     }
                     
-                    // Clone the response
                     const responseToCache = response.clone()
-                    
-                    // Cache the fetched response
                     caches.open(CACHE_NAME).then(cache => {
                         cache.put(request, responseToCache)
                     })
@@ -83,7 +97,6 @@ self.addEventListener('fetch', event => {
                 })
             })
             .catch(() => {
-                // Return offline page if available
                 return caches.match('./index.html')
             })
     )

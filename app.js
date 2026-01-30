@@ -1,8 +1,9 @@
 // 配置区
+const APP_VERSION = '1.0.1' // 版本号，更新后会清除旧缓存
 const BG_IMAGE = 'background.png'
 const USER_PHOTO = 'my_photo.png'
 const USER_NAME_ZH = '嵇志豪'
-const USER_BIO_ZH = '在此写入中文个人简介。可以包含职业、技能、经验等简短描述。'
+const USER_BIO_ZH = '你好！我是一名26届计算机科学与技术专业本科生，热爱用代码解决实际问题。熟悉 Java 后端开发与 MySQL 数据库设计，能独立完成从前端交互到后端接口、数据库搭建再到服务器部署的完整项目流程。曾独立开发 HR 客服系统和校园信息平台，注重代码质量与用户体验。目前正在寻找一份软件开发相关的实习机会，期待在实战中持续成长。欢迎联系我，一起做点有意思的事！'
 const USER_NAME_EN = 'ZhoJimmy'
 const USER_BIO_EN = 'Write your English bio here. Short summary of your role, skills and experience.'
 const USER_CONTACT = [
@@ -164,14 +165,38 @@ const i18n = {
         'home.title': '关于我', 'home.contact': '联系方式',
         'categories.title': '分类', 'board.title': '留言板', 
         'board.placeholder': '请输入留言', 'board.nick': '请输入昵称', 
-        'board.pwd': '请输入密码(用于删除留言)', 'board.post': '发布'
+        'board.pwd': '请输入密码(用于删除留言)', 'board.post': '发布',
+        'board.welcome': '欢迎来到留言板！',
+        'board.welcomeDesc': '在这里分享您的想法、建议或问候吧～',
+        'board.pwdHint': '💡 提示：设置密码后可以删除自己发布的留言',
+        'post.edit': '编辑', 'post.delete': '删除', 'post.publish': '发布文章',
+        'post.all': '全部', 'post.cover': '封面URL', 'post.localCover': '本地封面',
+        'post.title': '标题', 'post.desc': '简介', 'post.category': '分类',
+        'post.syncGithub': '同步GitHub', 'post.syncToRepo': '发布到 GitHub 仓库',
+        'post.githubToken': 'GitHub Token', 'post.password': '密码',
+        'post.editContent': '编辑正文', 'post.cancel': '取消', 'post.save': '保存',
+        'post.settings': '设置', 'post.deleteArticle': '删除文章',
+        'post.saveAndSync': '保存并同步', 'post.noContent': '暂无内容',
+        'post.loading': '正在从远端加载文章内容……', 'post.loadFailed': '加载失败'
     },
     en: {
         'nav.home': 'Home', 'nav.categories': 'Categories', 'nav.board': 'Board',
         'home.title': 'About Me', 'home.contact': 'Contact',
         'categories.title': 'Categories', 'board.title': 'Message Board', 
         'board.placeholder': 'Please enter a message', 'board.nick': 'Please enter a nickname', 
-        'board.pwd': 'Enter password (for deletion)', 'board.post': 'Post'
+        'board.pwd': 'Enter password (for deletion)', 'board.post': 'Post',
+        'board.welcome': 'Welcome to the Message Board!',
+        'board.welcomeDesc': 'Share your thoughts, suggestions, or greetings here~',
+        'board.pwdHint': '💡 Tip: Set a password to delete your own messages',
+        'post.edit': 'Edit', 'post.delete': 'Delete', 'post.publish': 'Publish Article',
+        'post.all': 'All', 'post.cover': 'Cover URL', 'post.localCover': 'Local Cover',
+        'post.title': 'Title', 'post.desc': 'Description', 'post.category': 'Category',
+        'post.syncGithub': 'Sync GitHub', 'post.syncToRepo': 'Publish to GitHub Repository',
+        'post.githubToken': 'GitHub Token', 'post.password': 'Password',
+        'post.editContent': 'Edit Content', 'post.cancel': 'Cancel', 'post.save': 'Save',
+        'post.settings': 'Settings', 'post.deleteArticle': 'Delete Article',
+        'post.saveAndSync': 'Save & Sync', 'post.noContent': 'No content',
+        'post.loading': 'Loading content from remote...', 'post.loadFailed': 'Load failed'
     }
 }
 
@@ -263,27 +288,149 @@ async function fetchRawFile(path) {
     }
 }
 
+// 自定义图片缩放功能（支持自由缩放）
+function makeImageResizable(img) {
+    if (img.dataset.resizable) return
+    img.dataset.resizable = 'true'
+    img.style.cursor = 'nwse-resize'
+    img.style.maxWidth = '100%'
+    
+    let isResizing = false
+    let startX, startY, startWidth, startHeight
+    
+    img.addEventListener('mousedown', function(e) {
+        if (e.button !== 0) return
+        e.preventDefault()
+        isResizing = true
+        startX = e.clientX
+        startY = e.clientY
+        startWidth = img.offsetWidth
+        startHeight = img.offsetHeight
+        
+        document.body.style.cursor = 'nwse-resize'
+        document.body.style.userSelect = 'none'
+    })
+    
+    document.addEventListener('mousemove', function(e) {
+        if (!isResizing) return
+        e.preventDefault()
+        
+        const deltaX = e.clientX - startX
+        const deltaY = e.clientY - startY
+        
+        // 自由缩放（非等比例）
+        const newWidth = Math.max(50, startWidth + deltaX)
+        const newHeight = Math.max(50, startHeight + deltaY)
+        
+        img.style.width = newWidth + 'px'
+        img.style.height = newHeight + 'px'
+        img.style.maxWidth = 'none'
+    })
+    
+    document.addEventListener('mouseup', function() {
+        if (isResizing) {
+            isResizing = false
+            document.body.style.cursor = ''
+            document.body.style.userSelect = ''
+        }
+    })
+}
+
 async function uploadFileToRepo(post, token) {
     const folder = REPO_PATH_MAP[post.category] || REPO_PATH_MAP['随笔'] || ''
     const filename = (post.title || 'post').replace(/[^a-z0-9]/ig, '_') + '.html'
     const targetPath = folder ? `${folder}/${filename}` : filename
-    const content = toBase64(post.content || '')
-    return await uploadContentToRepo(targetPath, content, token, `Update post: ${post.title}`)
+    
+    // 提取并上传内联图片
+    let content = post.content || ''
+    const imgRegex = /<img[^>]+src="data:image\/([^;]+);base64,([^"]+)"[^>]*>/g
+    let match
+    const uploadPromises = []
+    let imageCounter = 1
+    
+    while ((match = imgRegex.exec(content)) !== null) {
+        const fullMatch = match[0]
+        const imageType = match[1]
+        const base64Data = match[2]
+        
+        // 使用文章标题和序号作为图片名称
+        const safeTitle = (post.title || 'post').replace(/[^a-z0-9]/ig, '_').substring(0, 30)
+        const imageName = `${safeTitle}_img${imageCounter}.${imageType.replace('jpeg', 'jpg')}`
+        const imagePath = `${folder}/${imageName}`
+        
+        uploadPromises.push(
+            uploadContentToRepo(imagePath, base64Data, token, `Upload image ${imageName}`)
+                .then(res => {
+                    const imageUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${imagePath}`
+                    content = content.replace(fullMatch, fullMatch.replace(`data:image/${imageType};base64,${base64Data}`, imageUrl))
+                })
+                .catch(err => {
+                    console.error('Failed to upload image:', err)
+                })
+        )
+        
+        imageCounter++
+    }
+    
+    await Promise.all(uploadPromises)
+    
+    const contentBase64 = toBase64(content)
+    return await uploadContentToRepo(targetPath, contentBase64, token, `Update post: ${post.title}`)
 }
 
-async function deleteFileFromRepo(post, token) {
-    const path = post.repoPath || ((REPO_PATH_MAP[post.category] || '') + '/' + (post.title || 'post').replace(/[^a-z0-9]/ig, '_') + '.html')
-    const fileUrl = `${GITHUB_API_BASE}/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}`
+// 从 GitHub 删除单个文件
+async function deleteSingleFileFromRepo(filePath, token, message = 'Delete file') {
+    const fileUrl = `${GITHUB_API_BASE}/repos/${REPO_OWNER}/${REPO_NAME}/contents/${filePath}`
     const headers = { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' }
 
     const res = await fetch(fileUrl, { headers })
-    if (!res.ok) throw new Error('文件不存在或无法访问: ' + res.status)
+    if (!res.ok) {
+        console.warn(`文件不存在或无法访问: ${filePath}`)
+        return false
+    }
     const data = await res.json()
 
-    const body = { message: `Delete post: ${post.title}`, sha: data.sha, branch: REPO_BRANCH }
+    const body = { message, sha: data.sha, branch: REPO_BRANCH }
     const deleteRes = await fetch(fileUrl, { method: 'DELETE', headers, body: JSON.stringify(body) })
-    if (!deleteRes.ok) throw new Error('文件删除失败: ' + deleteRes.status)
+    if (!deleteRes.ok) {
+        console.warn(`文件删除失败: ${filePath}`)
+        return false
+    }
     return true
+}
+
+// 删除文章及其所有相关文件（封面、内容图片）
+async function deleteFileFromRepo(post, token) {
+    const folder = REPO_PATH_MAP[post.category] || 'Essay'
+    const safeTitle = (post.title || 'post').replace(/[^a-z0-9]/ig, '_').substring(0, 30)
+    
+    const deletePromises = []
+    
+    // 1. 删除文章 HTML 文件
+    const htmlPath = post.repoPath || `${folder}/${safeTitle}.html`
+    deletePromises.push(deleteSingleFileFromRepo(htmlPath, token, `Delete post: ${post.title}`))
+    
+    // 2. 删除封面图片（尝试常见格式）
+    const coverExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp']
+    for (const ext of coverExtensions) {
+        const coverPath = `${folder}/${safeTitle}_cover.${ext}`
+        deletePromises.push(deleteSingleFileFromRepo(coverPath, token, `Delete cover: ${post.title}`))
+    }
+    
+    // 3. 删除内容图片（尝试删除 img1-img20）
+    for (let i = 1; i <= 20; i++) {
+        for (const ext of ['jpg', 'jpeg', 'png', 'gif', 'webp']) {
+            const imgPath = `${folder}/${safeTitle}_img${i}.${ext}`
+            deletePromises.push(deleteSingleFileFromRepo(imgPath, token, `Delete image: ${post.title}`))
+        }
+    }
+    
+    // 并发删除所有文件
+    const results = await Promise.allSettled(deletePromises)
+    const successCount = results.filter(r => r.status === 'fulfilled' && r.value === true).length
+    
+    console.log(`删除完成: ${successCount} 个文件被删除`)
+    return successCount > 0
 }
 
 // 富文本编辑器页面
@@ -341,6 +488,15 @@ async function renderEditPage(id) {
             }
         })
         
+        // 添加自定义图片缩放功能（自由缩放，非等比例）
+        const images = quill.root.querySelectorAll('img')
+        images.forEach(img => makeImageResizable(img))
+        
+        quill.on('text-change', function() {
+            const newImages = quill.root.querySelectorAll('img:not([data-resizable])')
+            newImages.forEach(img => makeImageResizable(img))
+        })
+        
         if (post.content) {
             quill.root.innerHTML = post.content
         }
@@ -387,7 +543,7 @@ async function renderEditPage(id) {
         
         if (token) {
             try {
-                // 上传文章内容到 GitHub
+                // 上传文章内容到 GitHub（包括内联图片）
                 const res = await uploadFileToRepo(posts[idx], token)
                 posts[idx].repoSha = res.sha
                 posts[idx].repoPath = res.path
@@ -456,12 +612,12 @@ async function renderEditPage(id) {
 function renderPostDetail(id) {
     const p = getPosts().find(x => x.id == id) || { title: '未找到', desc: '', content: '' }
     
-    const renderedContent = p.content || '<p>暂无内容</p>'
+    const renderedContent = p.content || `<p>${t('post.noContent')}</p>`
     
     document.getElementById('app').innerHTML = `<section class="card">
         <div style="display:flex;justify-content:space-between;align-items:center">
             <h2 class="pd-title">${escapeHtml(p.title)}</h2>
-            <div><button id="jump-edit" style="padding:6px 12px;border-radius:6px;cursor:pointer">编辑</button></div>
+            <div><button id="jump-edit" style="padding:6px 12px;border-radius:6px;cursor:pointer">${t('post.edit')}</button></div>
         </div>
         <p class="pd-desc">${escapeHtml(p.desc)}</p>
         <hr/>
@@ -474,7 +630,7 @@ function renderPostDetail(id) {
     if ((!p.content || p.content.trim() === '') && p.repoPath) {
         const contentEl = document.querySelector('.pd-content')
         if (contentEl) {
-            contentEl.innerHTML = '<p>正在从远端加载文章内容……</p>'
+            contentEl.innerHTML = `<p>${t('post.loading')}</p>`
             fetchRawFile(p.repoPath).then(txt => {
                 if (txt) {
                     p.content = txt
@@ -486,11 +642,11 @@ function renderPostDetail(id) {
                     }
                     contentEl.innerHTML = txt
                 } else {
-                    contentEl.innerHTML = '<p>无法加载远端内容</p>'
+                    contentEl.innerHTML = `<p>${t('post.loadFailed')}</p>`
                 }
             }).catch(e => {
                 console.error('Failed to fetch remote content:', e)
-                contentEl.innerHTML = '<p>加载失败</p>'
+                contentEl.innerHTML = `<p>${t('post.loadFailed')}</p>`
             })
         }
     }
@@ -535,10 +691,10 @@ function renderCategories(root, selectedCat) {
     root.innerHTML = `<section class="card">
         <div style="display:flex;justify-content:space-between;align-items:center">
             <h2>${t('categories.title')}</h2>
-            <div><button id="addArticleBtn">发布文章</button></div>
+            <div><button id="addArticleBtn">${t('post.publish')}</button></div>
         </div>
         <div class="categories">
-            <button class="cat-btn" data-cat="all">全部</button>
+            <button class="cat-btn" data-cat="all">${t('post.all')}</button>
             ${categories.map(c => `<button class="cat-btn" data-cat="${c}">${c}</button>`).join('')}
         </div>
         <div id="posts" class="posts-grid"></div>
@@ -571,14 +727,14 @@ function renderPostsForCategory(cat) {
     const fragment = document.createDocumentFragment()
     const tempDiv = document.createElement('div')
     tempDiv.innerHTML = posts.map(p => `<div class="post card" data-id="${p.id}">
-        <img src="${p.cover || 'https://via.placeholder.com/320x180'}" alt="${escapeHtml(p.title)}" loading="lazy">
+        <img src="${p.cover || 'https://via.placeholder.com/320x180'}" alt="${escapeHtml(p.title)}" loading="lazy" onload="this.classList.add('loaded')">
         <div>
             <h4 class="post-title">${escapeHtml(p.title)}</h4>
             <p class="post-desc">${escapeHtml(p.desc)}</p>
         </div>
         <div style="margin-left:auto">
-            <button class="edit-post" data-id="${p.id}">编辑</button>
-            <button class="del-post" data-id="${p.id}">删除</button>
+            <button class="edit-post" data-id="${p.id}">${t('post.edit')}</button>
+            <button class="del-post" data-id="${p.id}">${t('post.delete')}</button>
         </div>
     </div>`).join('')
     
@@ -613,9 +769,14 @@ function renderPostsForCategory(cat) {
 function renderBoard(root) {
     root.innerHTML = `<section class="card">
         <h2>${t('board.title')}</h2>
+        <div style="background:#f8f9fa;padding:16px;border-radius:8px;margin-bottom:16px;border-left:4px solid #0969da">
+            <div style="font-size:18px;font-weight:600;margin-bottom:8px">${t('board.welcome')}</div>
+            <div style="color:#666;margin-bottom:8px">${t('board.welcomeDesc')}</div>
+            <div style="color:#888;font-size:13px">${t('board.pwdHint')}</div>
+        </div>
         <div class="board-form">
             <input id="nick" placeholder="${t('board.nick')}" />
-            <input id="pwd" placeholder="${t('board.pwd')}" style="width:180px;" />
+            <input id="pwd" placeholder="${t('board.pwd')}" type="password" style="width:180px;" />
             <input id="msg" placeholder="${t('board.placeholder')}" style="flex:1;" />
             <button id="postBtn">${t('board.post')}</button>
         </div>
@@ -630,14 +791,33 @@ function loadMessages() {
     const msgs = JSON.parse(localStorage.getItem('myblog_msgs') || '[]')
     const box = document.getElementById('messages')
     
+    if (!box) return // 防止在页面切换时出错
+    
     // 使用 DocumentFragment 优化 DOM 操作
     const fragment = document.createDocumentFragment()
     const tempDiv = document.createElement('div')
+    
+    // 格式化时间显示
+    const formatTime = (timestamp) => {
+        const date = new Date(timestamp)
+        const now = new Date()
+        const diff = now - date
+        const minutes = Math.floor(diff / 60000)
+        const hours = Math.floor(diff / 3600000)
+        const days = Math.floor(diff / 86400000)
+        
+        if (minutes < 1) return currentLang === 'zh' ? '刚刚' : 'Just now'
+        if (minutes < 60) return currentLang === 'zh' ? `${minutes}分钟前` : `${minutes}m ago`
+        if (hours < 24) return currentLang === 'zh' ? `${hours}小时前` : `${hours}h ago`
+        if (days < 7) return currentLang === 'zh' ? `${days}天前` : `${days}d ago`
+        return date.toLocaleString(currentLang === 'zh' ? 'zh-CN' : 'en-US')
+    }
+    
     tempDiv.innerHTML = msgs.map((m, idx) => `<div class="message">
         <div>
             <strong>${escapeHtml(m.nick || '访客')}</strong> 
-            <small>${new Date(m.t).toLocaleString()}</small> 
-            <button data-idx="${idx}" class="del-btn">删除</button>
+            <small>${formatTime(m.t)}</small> 
+            <button data-idx="${idx}" class="del-btn">${currentLang === 'zh' ? '删除' : 'Delete'}</button>
         </div>
         <div>${escapeHtml(m.text)}</div>
     </div>`).join('')
@@ -649,13 +829,22 @@ function loadMessages() {
     box.innerHTML = ''
     box.appendChild(fragment)
 
-    // 使用事件委托
-    box.addEventListener('click', function(e) {
+    // 移除旧的事件监听器（如果存在）
+    const oldHandler = box._deleteHandler
+    if (oldHandler) {
+        box.removeEventListener('click', oldHandler)
+    }
+    
+    // 创建新的事件处理器并保存引用
+    const deleteHandler = function(e) {
         if (e.target.classList.contains('del-btn')) {
             const idx = +e.target.dataset.idx
-        tryDelete(idx)
+            tryDelete(idx)
         }
-    })
+    }
+    
+    box._deleteHandler = deleteHandler
+    box.addEventListener('click', deleteHandler)
 }
 
 function postMessage() {
@@ -787,7 +976,9 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                     })
                     const base64 = arrayBufferToBase64(buffer)
                     const folder = REPO_PATH_MAP[cat.value] || 'Essay'
-                    const safeName = Date.now() + '_' + file.name.replace(/[^a-z0-9.\-]/ig, '_')
+                    const safeTitle = (title.value.trim() || 'post').replace(/[^a-z0-9]/ig, '_').substring(0, 30)
+                    const ext = file.name.split('.').pop().toLowerCase()
+                    const safeName = `${safeTitle}_cover.${ext}`
                     const imagePath = `${folder}/${safeName}`
                     
                     await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
@@ -835,7 +1026,9 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                     })
                     const base64 = arrayBufferToBase64(buffer)
                     const folder = REPO_PATH_MAP[cat.value] || 'Essay'
-                    const safeName = Date.now() + '_' + file.name.replace(/[^a-z0-9.\-]/ig, '_')
+                    const safeTitle = (title.value.trim() || 'post').replace(/[^a-z0-9]/ig, '_').substring(0, 30)
+                    const ext = file.name.split('.').pop().toLowerCase()
+                    const safeName = `${safeTitle}_cover.${ext}`
                     const imagePath = `${folder}/${safeName}`
                     
                     await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
@@ -960,30 +1153,38 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
             const titleChanged = oldTitle !== posts[idx].title
             const categoryChanged = oldCategory !== posts[idx].category
             
-            if (oldRepoPath && (titleChanged || categoryChanged) && useRemote && tokenVal) {
-                const confirmUpdate = await customConfirm('⚠️ 检测到标题或分类已更改\n\n是否同步更新 GitHub 上的文章？\n\n注意：旧文件会被删除，新文件会被创建', '确认更新')
-                
-                if (confirmUpdate) {
-                    try {
-                        // 删除旧文件
-                        await deleteFileFromRepo({ ...posts[idx], title: oldTitle, category: oldCategory, repoPath: oldRepoPath }, tokenVal)
-                        
-                        // 上传新文件（如果有内容）
-                        if (posts[idx].content) {
-                            const res = await uploadFileToRepo(posts[idx], tokenVal)
-                            posts[idx].repoSha = res.sha
-                            posts[idx].repoPath = res.path
-                            await customAlert('✅ GitHub 同步成功！\n\n旧文件已删除，新文件已创建\n路径：' + res.path, '同步成功')
-                        } else {
-                            // 清除 repoPath，因为旧文件已删除但新文件还没内容
-                            posts[idx].repoPath = null
-                            posts[idx].repoSha = null
-                            await customAlert('✅ 旧文件已从 GitHub 删除\n\n💡 提示：编辑正文并保存后会创建新文件', '提示')
+            if (oldRepoPath && (titleChanged || categoryChanged)) {
+                if (useRemote && tokenVal) {
+                    const confirmUpdate = await customConfirm('⚠️ 检测到标题或分类已更改\n\n是否同步更新 GitHub 上的文章？\n\n注意：旧文件会被删除，新文件会被创建', '确认更新')
+                    
+                    if (confirmUpdate) {
+                        try {
+                            // 删除旧文件
+                            await deleteFileFromRepo({ ...posts[idx], title: oldTitle, category: oldCategory, repoPath: oldRepoPath }, tokenVal)
+                            
+                            // 上传新文件（如果有内容）
+                            if (posts[idx].content) {
+                                const res = await uploadFileToRepo(posts[idx], tokenVal)
+                                posts[idx].repoSha = res.sha
+                                posts[idx].repoPath = res.path
+                                await customAlert('✅ GitHub 同步成功！\n\n旧文件已删除，新文件已创建\n路径：' + res.path, '同步成功')
+                            } else {
+                                // 清除 repoPath，因为旧文件已删除但新文件还没内容
+                                posts[idx].repoPath = null
+                                posts[idx].repoSha = null
+                                await customAlert('✅ 旧文件已从 GitHub 删除\n\n💡 提示：编辑正文并保存后会创建新文件', '提示')
+                            }
+                        } catch (err) {
+                            await customAlert('❌ GitHub 同步失败：' + err.message + '\n\n元数据已保存到本地', '同步失败')
+                            console.error(err)
                         }
-                    } catch (err) {
-                        await customAlert('❌ GitHub 同步失败：' + err.message + '\n\n元数据已保存到本地', '同步失败')
-                        console.error(err)
                     }
+                } else {
+                    // 没有提供 Token，但分类或标题改变了，提醒用户
+                    await customAlert('⚠️ 检测到标题或分类已更改\n\n元数据已保存到本地\n\n💡 提示：勾选"同步GitHub"并提供Token可同步删除旧文件', '提示')
+                    // 清除旧的 repoPath，因为路径已经不对了
+                    posts[idx].repoPath = null
+                    posts[idx].repoSha = null
                 }
             }
             
@@ -1077,10 +1278,36 @@ function goBack() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    // 检查版本并清除旧缓存
+    const cachedVersion = localStorage.getItem('app_version')
+    if (cachedVersion !== APP_VERSION) {
+        console.log('New version detected, clearing cache...')
+        localStorage.setItem('app_version', APP_VERSION)
+        
+        // 清除 Service Worker 缓存
+        if ('serviceWorker' in navigator) {
+            caches.keys().then(cacheNames => {
+                return Promise.all(
+                    cacheNames.map(cacheName => caches.delete(cacheName))
+                )
+            }).then(() => {
+                console.log('All caches cleared')
+                // 强制刷新页面以加载新资源
+                if (cachedVersion) { // 只在非首次访问时刷新
+                    window.location.reload(true)
+                }
+            })
+        }
+    }
+    
     // 注册 Service Worker
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./sw.js')
-            .then(reg => console.log('Service Worker registered:', reg.scope))
+        navigator.serviceWorker.register('./sw.js?v=' + APP_VERSION)
+            .then(reg => {
+                console.log('Service Worker registered:', reg.scope)
+                // 检查更新
+                reg.update()
+            })
             .catch(err => console.warn('Service Worker registration failed:', err))
     }
     

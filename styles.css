@@ -31,6 +31,22 @@
     padding: 16px;
 }
 
+.ql-editor img {
+    max-width: 100%;
+    height: auto;
+    cursor: pointer;
+}
+
+/* 图片缩放控制样式 */
+.ql-editor .ql-image-resize {
+    position: relative;
+    display: inline-block;
+}
+
+.ql-editor .ql-image-resize img {
+    display: block;
+}
+
 .ql-toolbar {
     border-top-left-radius: 8px;
     border-top-right-radius: 8px;
@@ -539,6 +555,17 @@ body {
     object-fit: cover;
     flex-shrink: 0;
     loading: lazy;
+    will-change: transform;
+}
+
+/* 图片懒加载优化 */
+img[loading="lazy"] {
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+img[loading="lazy"].loaded {
+    opacity: 1;
 }
 
 button {
