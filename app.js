@@ -3,7 +3,7 @@ const APP_VERSION = '1.0.1' // 版本号，更新后会清除旧缓存
 const BG_IMAGE = 'background.png'
 const USER_PHOTO = 'my_photo.png'
 const USER_NAME_ZH = '嵇志豪'
-const USER_BIO_ZH = '你好！我是一名26届计算机科学与技术专业本科生，热爱用代码解决实际问题。熟悉 Java 后端开发与 MySQL 数据库设计，能独立完成从前端交互到后端接口、数据库搭建再到服务器部署的完整项目流程。曾独立开发 HR 客服系统和校园信息平台，注重代码质量与用户体验。目前正在寻找一份软件开发相关的实习机会，期待在实战中持续成长。欢迎联系我，一起做点有意思的事！'
+const USER_BIO_ZH = '你好！我是一名26届计算机科学与技术专业本科生，热爱用代码解决实际问题。熟悉 Java 后端开发与 MySQL 数据库设计，能独立完成从前端交互到后端接口、数据库搭建再到服务器部署的完整项目流程，注重代码质量与用户体验。努力学习新技术ing，期待在实战中持续成长。欢迎联系我，一起做点有意思的事！'
 const USER_NAME_EN = 'ZhoJimmy'
 const USER_BIO_EN = 'Write your English bio here. Short summary of your role, skills and experience.'
 const USER_CONTACT = [
@@ -26,7 +26,7 @@ function debounce(func, wait) {
 
 function throttle(func, limit) {
     let inThrottle
-    return function(...args) {
+    return function (...args) {
         if (!inThrottle) {
             func.apply(this, args)
             inThrottle = true
@@ -47,15 +47,15 @@ function showDialog({ title = '提示', message = '', type = 'alert', inputType 
     return new Promise((resolve) => {
         const backdrop = document.createElement('div')
         backdrop.className = 'dialog-backdrop'
-        
+
         const dialog = document.createElement('div')
         dialog.className = 'dialog-box'
-        
+
         let inputHtml = ''
         if (type === 'prompt') {
             inputHtml = `<input type="${inputType}" id="dialog-input" class="dialog-input" placeholder="${placeholder}" value="${defaultValue}">`
         }
-        
+
         let buttonsHtml = ''
         if (type === 'confirm' || type === 'prompt') {
             buttonsHtml = `
@@ -65,7 +65,7 @@ function showDialog({ title = '提示', message = '', type = 'alert', inputType 
         } else {
             buttonsHtml = `<button id="dialog-ok" class="dialog-btn dialog-btn-ok">确定</button>`
         }
-        
+
         dialog.innerHTML = `
             <div class="dialog-header">${title}</div>
             <div class="dialog-body">
@@ -76,10 +76,10 @@ function showDialog({ title = '提示', message = '', type = 'alert', inputType 
                 ${buttonsHtml}
             </div>
         `
-        
+
         backdrop.appendChild(dialog)
         document.body.appendChild(backdrop)
-        
+
         // 聚焦输入框
         if (type === 'prompt') {
             setTimeout(() => {
@@ -87,7 +87,7 @@ function showDialog({ title = '提示', message = '', type = 'alert', inputType 
                 if (input) input.focus()
             }, 100)
         }
-        
+
         // 确定按钮
         const okBtn = document.getElementById('dialog-ok')
         okBtn.addEventListener('click', () => {
@@ -101,7 +101,7 @@ function showDialog({ title = '提示', message = '', type = 'alert', inputType 
             }
             document.body.removeChild(backdrop)
         })
-        
+
         // 取消按钮
         const cancelBtn = document.getElementById('dialog-cancel')
         if (cancelBtn) {
@@ -110,7 +110,7 @@ function showDialog({ title = '提示', message = '', type = 'alert', inputType 
                 document.body.removeChild(backdrop)
             })
         }
-        
+
         // 点击背景关闭
         backdrop.addEventListener('click', (e) => {
             if (e.target === backdrop) {
@@ -118,7 +118,7 @@ function showDialog({ title = '提示', message = '', type = 'alert', inputType 
                 document.body.removeChild(backdrop)
             }
         })
-        
+
         // ESC 键关闭
         const escHandler = (e) => {
             if (e.key === 'Escape') {
@@ -128,7 +128,7 @@ function showDialog({ title = '提示', message = '', type = 'alert', inputType 
             }
         }
         document.addEventListener('keydown', escHandler)
-        
+
         // Enter 键确认
         if (type === 'prompt') {
             const input = document.getElementById('dialog-input')
@@ -163,8 +163,8 @@ const i18n = {
     zh: {
         'nav.home': '首页', 'nav.categories': '博客', 'nav.board': '留言板',
         'home.title': '关于我', 'home.contact': '联系方式',
-        'categories.title': '分类', 'board.title': '留言板', 
-        'board.placeholder': '请输入留言', 'board.nick': '请输入昵称', 
+        'categories.title': '分类', 'board.title': '留言板',
+        'board.placeholder': '请输入留言', 'board.nick': '请输入昵称',
         'board.pwd': '请输入密码(用于删除留言)', 'board.post': '发布',
         'board.welcome': '欢迎来到留言板！',
         'board.welcomeDesc': '在这里分享您的想法、建议或问候吧～',
@@ -182,8 +182,8 @@ const i18n = {
     en: {
         'nav.home': 'Home', 'nav.categories': 'Categories', 'nav.board': 'Board',
         'home.title': 'About Me', 'home.contact': 'Contact',
-        'categories.title': 'Categories', 'board.title': 'Message Board', 
-        'board.placeholder': 'Please enter a message', 'board.nick': 'Please enter a nickname', 
+        'categories.title': 'Categories', 'board.title': 'Message Board',
+        'board.placeholder': 'Please enter a message', 'board.nick': 'Please enter a nickname',
         'board.pwd': 'Enter password (for deletion)', 'board.post': 'Post',
         'board.welcome': 'Welcome to the Message Board!',
         'board.welcomeDesc': 'Share your thoughts, suggestions, or greetings here~',
@@ -203,8 +203,8 @@ const i18n = {
 let currentLang = 'zh'
 function t(key) { return (i18n[currentLang] && i18n[currentLang][key]) || key }
 function setBackground() {
-    if (BG_IMAGE && BG_IMAGE.trim()) { 
-        document.documentElement.style.setProperty('--bg-url', `url('${BG_IMAGE}')`) 
+    if (BG_IMAGE && BG_IMAGE.trim()) {
+        document.documentElement.style.setProperty('--bg-url', `url('${BG_IMAGE}')`)
     }
 }
 
@@ -217,9 +217,9 @@ const sampleArticles = [
 
 function getPosts() {
     const raw = localStorage.getItem('myblog_posts')
-    if (!raw) { 
+    if (!raw) {
         localStorage.setItem('myblog_posts', JSON.stringify(sampleArticles))
-        return sampleArticles.slice() 
+        return sampleArticles.slice()
     }
     try { return JSON.parse(raw) } catch (e) { return sampleArticles.slice() }
 }
@@ -243,7 +243,7 @@ const REPO_PATH_MAP = {
 }
 
 function toBase64(str) { return btoa(unescape(encodeURIComponent(str))) }
-function arrayBufferToBase64(buffer) { 
+function arrayBufferToBase64(buffer) {
     let binary = ''
     const bytes = new Uint8Array(buffer)
     for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
@@ -294,11 +294,11 @@ function makeImageResizable(img) {
     img.dataset.resizable = 'true'
     img.style.cursor = 'nwse-resize'
     img.style.maxWidth = '100%'
-    
+
     let isResizing = false
     let startX, startY, startWidth, startHeight
-    
-    img.addEventListener('mousedown', function(e) {
+
+    img.addEventListener('mousedown', function (e) {
         if (e.button !== 0) return
         e.preventDefault()
         isResizing = true
@@ -306,28 +306,28 @@ function makeImageResizable(img) {
         startY = e.clientY
         startWidth = img.offsetWidth
         startHeight = img.offsetHeight
-        
+
         document.body.style.cursor = 'nwse-resize'
         document.body.style.userSelect = 'none'
     })
-    
-    document.addEventListener('mousemove', function(e) {
+
+    document.addEventListener('mousemove', function (e) {
         if (!isResizing) return
         e.preventDefault()
-        
+
         const deltaX = e.clientX - startX
         const deltaY = e.clientY - startY
-        
+
         // 自由缩放（非等比例）
         const newWidth = Math.max(50, startWidth + deltaX)
         const newHeight = Math.max(50, startHeight + deltaY)
-        
+
         img.style.width = newWidth + 'px'
         img.style.height = newHeight + 'px'
         img.style.maxWidth = 'none'
     })
-    
-    document.addEventListener('mouseup', function() {
+
+    document.addEventListener('mouseup', function () {
         if (isResizing) {
             isResizing = false
             document.body.style.cursor = ''
@@ -340,24 +340,24 @@ async function uploadFileToRepo(post, token) {
     const folder = REPO_PATH_MAP[post.category] || REPO_PATH_MAP['随笔'] || ''
     const filename = (post.title || 'post').replace(/[^a-z0-9]/ig, '_') + '.html'
     const targetPath = folder ? `${folder}/${filename}` : filename
-    
+
     // 提取并上传内联图片
     let content = post.content || ''
     const imgRegex = /<img[^>]+src="data:image\/([^;]+);base64,([^"]+)"[^>]*>/g
     let match
     const uploadPromises = []
     let imageCounter = 1
-    
+
     while ((match = imgRegex.exec(content)) !== null) {
         const fullMatch = match[0]
         const imageType = match[1]
         const base64Data = match[2]
-        
+
         // 使用文章标题和序号作为图片名称
         const safeTitle = (post.title || 'post').replace(/[^a-z0-9]/ig, '_').substring(0, 30)
         const imageName = `${safeTitle}_img${imageCounter}.${imageType.replace('jpeg', 'jpg')}`
         const imagePath = `${folder}/${imageName}`
-        
+
         uploadPromises.push(
             uploadContentToRepo(imagePath, base64Data, token, `Upload image ${imageName}`)
                 .then(res => {
@@ -368,12 +368,12 @@ async function uploadFileToRepo(post, token) {
                     console.error('Failed to upload image:', err)
                 })
         )
-        
+
         imageCounter++
     }
-    
+
     await Promise.all(uploadPromises)
-    
+
     const contentBase64 = toBase64(content)
     return await uploadContentToRepo(targetPath, contentBase64, token, `Update post: ${post.title}`)
 }
@@ -403,20 +403,20 @@ async function deleteSingleFileFromRepo(filePath, token, message = 'Delete file'
 async function deleteFileFromRepo(post, token) {
     const folder = REPO_PATH_MAP[post.category] || 'Essay'
     const safeTitle = (post.title || 'post').replace(/[^a-z0-9]/ig, '_').substring(0, 30)
-    
+
     const deletePromises = []
-    
+
     // 1. 删除文章 HTML 文件
     const htmlPath = post.repoPath || `${folder}/${safeTitle}.html`
     deletePromises.push(deleteSingleFileFromRepo(htmlPath, token, `Delete post: ${post.title}`))
-    
+
     // 2. 删除封面图片（尝试常见格式）
     const coverExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp']
     for (const ext of coverExtensions) {
         const coverPath = `${folder}/${safeTitle}_cover.${ext}`
         deletePromises.push(deleteSingleFileFromRepo(coverPath, token, `Delete cover: ${post.title}`))
     }
-    
+
     // 3. 删除内容图片（尝试删除 img1-img20）
     for (let i = 1; i <= 20; i++) {
         for (const ext of ['jpg', 'jpeg', 'png', 'gif', 'webp']) {
@@ -424,11 +424,11 @@ async function deleteFileFromRepo(post, token) {
             deletePromises.push(deleteSingleFileFromRepo(imgPath, token, `Delete image: ${post.title}`))
         }
     }
-    
+
     // 并发删除所有文件
     const results = await Promise.allSettled(deletePromises)
     const successCount = results.filter(r => r.status === 'fulfilled' && r.value === true).length
-    
+
     console.log(`删除完成: ${successCount} 个文件被删除`)
     return successCount > 0
 }
@@ -440,7 +440,7 @@ async function renderEditPage(id) {
         await customAlert('文章未找到')
         return
     }
-    
+
     document.getElementById('app').innerHTML = `<section class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
             <h2>编辑正文：${escapeHtml(post.title)}</h2>
@@ -462,11 +462,11 @@ async function renderEditPage(id) {
     </section>`
 
     let quill = null
-    
+
     // 动态加载 Quill
     try {
         await window.loadQuill()
-        
+
         quill = new Quill('#editor-container', {
             theme: 'snow',
             placeholder: '开始编写您的文章内容...',
@@ -477,9 +477,9 @@ async function renderEditPage(id) {
                     [{ 'size': ['small', false, 'large', 'huge'] }],
                     ['bold', 'italic', 'underline', 'strike'],
                     [{ 'color': [] }, { 'background': [] }],
-                    [{ 'script': 'sub'}, { 'script': 'super' }],
-                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-                    [{ 'indent': '-1'}, { 'indent': '+1' }],
+                    [{ 'script': 'sub' }, { 'script': 'super' }],
+                    [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                    [{ 'indent': '-1' }, { 'indent': '+1' }],
                     [{ 'align': [] }],
                     ['blockquote', 'code-block'],
                     ['link', 'image', 'video'],
@@ -487,16 +487,16 @@ async function renderEditPage(id) {
                 ]
             }
         })
-        
+
         // 添加自定义图片缩放功能（自由缩放，非等比例）
         const images = quill.root.querySelectorAll('img')
         images.forEach(img => makeImageResizable(img))
-        
-        quill.on('text-change', function() {
+
+        quill.on('text-change', function () {
             const newImages = quill.root.querySelectorAll('img:not([data-resizable])')
             newImages.forEach(img => makeImageResizable(img))
         })
-        
+
         if (post.content) {
             quill.root.innerHTML = post.content
         }
@@ -505,7 +505,7 @@ async function renderEditPage(id) {
         await customAlert('编辑器加载失败，请刷新页面重试')
         return
     }
-    
+
     if ((!post.content || post.content.trim() === '') && post.repoPath) {
         fetchRawFile(post.repoPath).then(txt => {
             if (txt && quill) {
@@ -527,20 +527,20 @@ async function renderEditPage(id) {
             await customAlert('编辑器未初始化')
             return
         }
-        
+
         const htmlContent = quill.root.innerHTML
         const token = document.getElementById('edit-token').value.trim()
         const posts = getPosts()
         const idx = posts.findIndex(p => p.id == id)
-        
+
         if (idx === -1) {
             await customAlert('文章未找到')
             return
         }
-        
+
         posts[idx].content = htmlContent
         savePosts(posts)
-        
+
         if (token) {
             try {
                 // 上传文章内容到 GitHub（包括内联图片）
@@ -556,14 +556,14 @@ async function renderEditPage(id) {
         } else {
             await customAlert('✅ 保存成功！\n\n💡 提示：输入 GitHub Token 可同步到远程仓库', '保存成功')
         }
-        
+
         location.hash = 'post-' + id
     })
 
     document.getElementById('cancel-md').addEventListener('click', () => {
         location.hash = 'post-' + id
     })
-    
+
     document.getElementById('admin-md').addEventListener('click', () => {
         openEditor({ mode: 'edit', post })
     })
@@ -571,11 +571,11 @@ async function renderEditPage(id) {
     document.getElementById('delete-md').addEventListener('click', async () => {
         const confirmed = await customConfirm('⚠️ 确定要删除这篇文章吗？\n\n此操作不可恢复！', '确认删除')
         if (!confirmed) return
-        
+
         const token = document.getElementById('edit-token').value.trim()
         const posts = getPosts()
         const idx = posts.findIndex(p => p.id == id)
-        
+
         if (idx === -1) {
             await customAlert('文章未找到')
             return
@@ -595,7 +595,7 @@ async function renderEditPage(id) {
                     savePosts(posts)
                     await customAlert('✅ 已删除本地文章', '删除成功')
                 } else {
-                return
+                    return
                 }
             }
         } else {
@@ -611,9 +611,9 @@ async function renderEditPage(id) {
 // 文章阅读页面
 function renderPostDetail(id) {
     const p = getPosts().find(x => x.id == id) || { title: '未找到', desc: '', content: '' }
-    
+
     const renderedContent = p.content || `<p>${t('post.noContent')}</p>`
-    
+
     document.getElementById('app').innerHTML = `<section class="card">
         <div style="display:flex;justify-content:space-between;align-items:center">
             <h2 class="pd-title">${escapeHtml(p.title)}</h2>
@@ -623,10 +623,10 @@ function renderPostDetail(id) {
         <hr/>
         <div class="pd-content ql-editor">${renderedContent}</div>
     </section>`
-    
+
     const jumpBtn = document.getElementById('jump-edit')
     if (jumpBtn) jumpBtn.addEventListener('click', () => { location.hash = 'edit-' + id })
-    
+
     if ((!p.content || p.content.trim() === '') && p.repoPath) {
         const contentEl = document.querySelector('.pd-content')
         if (contentEl) {
@@ -653,7 +653,7 @@ function renderPostDetail(id) {
 }
 
 // 路由
-const router = debounce(function() {
+const router = debounce(function () {
     const hash = location.hash.replace('#', '') || 'home'
     if (hash.startsWith('edit-')) return renderEditPage(hash.replace('edit-', ''))
     if (hash.startsWith('post-')) return renderPostDetail(hash.replace('post-', ''))
@@ -701,10 +701,10 @@ function renderCategories(root, selectedCat) {
     </section>`
 
     // 使用事件委托优化分类按钮点击
-    root.querySelector('.categories').addEventListener('click', function(e) {
+    root.querySelector('.categories').addEventListener('click', function (e) {
         if (e.target.classList.contains('cat-btn')) {
             const catKey = e.target.dataset.cat
-        location.hash = 'categories-' + encodeURIComponent(catKey)
+            location.hash = 'categories-' + encodeURIComponent(catKey)
         }
     })
 
@@ -722,7 +722,7 @@ function renderPostsForCategory(cat) {
         posts = getPosts().filter(p => p.type === 'article' && p.category === cat)
     }
     const el = document.getElementById('posts')
-    
+
     // 使用 DocumentFragment 减少 DOM 重绘
     const fragment = document.createDocumentFragment()
     const tempDiv = document.createElement('div')
@@ -737,19 +737,19 @@ function renderPostsForCategory(cat) {
             <button class="del-post" data-id="${p.id}">${t('post.delete')}</button>
         </div>
     </div>`).join('')
-    
+
     while (tempDiv.firstChild) {
         fragment.appendChild(tempDiv.firstChild)
     }
-    
+
     el.innerHTML = ''
     el.appendChild(fragment)
 
     // 使用事件委托减少事件监听器数量
-    el.addEventListener('click', function(e) {
+    el.addEventListener('click', function (e) {
         const target = e.target
         const card = target.closest('.post')
-        
+
         if (target.classList.contains('edit-post')) {
             e.stopPropagation()
             const id = +target.dataset.id
@@ -760,8 +760,8 @@ function renderPostsForCategory(cat) {
             const id = +target.dataset.id
             deletePost(id)
         } else if (card) {
-        const id = card.dataset.id
-        location.hash = 'post-' + id
+            const id = card.dataset.id
+            location.hash = 'post-' + id
         }
     })
 }
@@ -790,13 +790,13 @@ function renderBoard(root) {
 function loadMessages() {
     const msgs = JSON.parse(localStorage.getItem('myblog_msgs') || '[]')
     const box = document.getElementById('messages')
-    
+
     if (!box) return // 防止在页面切换时出错
-    
+
     // 使用 DocumentFragment 优化 DOM 操作
     const fragment = document.createDocumentFragment()
     const tempDiv = document.createElement('div')
-    
+
     // 格式化时间显示
     const formatTime = (timestamp) => {
         const date = new Date(timestamp)
@@ -805,14 +805,14 @@ function loadMessages() {
         const minutes = Math.floor(diff / 60000)
         const hours = Math.floor(diff / 3600000)
         const days = Math.floor(diff / 86400000)
-        
+
         if (minutes < 1) return currentLang === 'zh' ? '刚刚' : 'Just now'
         if (minutes < 60) return currentLang === 'zh' ? `${minutes}分钟前` : `${minutes}m ago`
         if (hours < 24) return currentLang === 'zh' ? `${hours}小时前` : `${hours}h ago`
         if (days < 7) return currentLang === 'zh' ? `${days}天前` : `${days}d ago`
         return date.toLocaleString(currentLang === 'zh' ? 'zh-CN' : 'en-US')
     }
-    
+
     tempDiv.innerHTML = msgs.map((m, idx) => `<div class="message">
         <div>
             <strong>${escapeHtml(m.nick || '访客')}</strong> 
@@ -821,11 +821,11 @@ function loadMessages() {
         </div>
         <div>${escapeHtml(m.text)}</div>
     </div>`).join('')
-    
+
     while (tempDiv.firstChild) {
         fragment.appendChild(tempDiv.firstChild)
     }
-    
+
     box.innerHTML = ''
     box.appendChild(fragment)
 
@@ -834,15 +834,15 @@ function loadMessages() {
     if (oldHandler) {
         box.removeEventListener('click', oldHandler)
     }
-    
+
     // 创建新的事件处理器并保存引用
-    const deleteHandler = function(e) {
+    const deleteHandler = function (e) {
         if (e.target.classList.contains('del-btn')) {
             const idx = +e.target.dataset.idx
             tryDelete(idx)
         }
     }
-    
+
     box._deleteHandler = deleteHandler
     box.addEventListener('click', deleteHandler)
 }
@@ -929,7 +929,7 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
     const pwd = modal.querySelector('#ed-pwd')
     const remoteCheckbox = modal.querySelector('#ed-remote')
     const token = modal.querySelector('#ed-token')
-    
+
     if (post) {
         cover.value = post.cover || ''
         title.value = post.title || ''
@@ -951,19 +951,19 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
             await customAlert('密码错误：需要主密码以发布/编辑文章', '密码错误')
             return
         }
-        
+
         const useRemote = remoteCheckbox.checked
         const tokenVal = token.value.trim()
-        
+
         if (useRemote && !tokenVal) {
             await customAlert('要同步到 GitHub，请提供 Personal Access Token', '提示')
             return
         }
-        
+
         if (mode === 'create') {
             const id = Date.now()
             let coverUrl = cover.value.trim()
-            
+
             // 如果选择了本地封面，先上传
             if (useRemote && coverFile.files && coverFile.files[0]) {
                 try {
@@ -980,7 +980,7 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                     const ext = file.name.split('.').pop().toLowerCase()
                     const safeName = `${safeTitle}_cover.${ext}`
                     const imagePath = `${folder}/${safeName}`
-                    
+
                     await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
                     coverUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${imagePath}`
                 } catch (err) {
@@ -989,7 +989,7 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                     return
                 }
             }
-            
+
             const newPost = {
                 id,
                 type: 'article',
@@ -1011,9 +1011,9 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                 await customAlert('文章未找到')
                 return
             }
-            
+
             let coverUrl = cover.value.trim()
-            
+
             // 如果选择了本地封面，先上传
             if (useRemote && coverFile.files && coverFile.files[0]) {
                 try {
@@ -1030,7 +1030,7 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                     const ext = file.name.split('.').pop().toLowerCase()
                     const safeName = `${safeTitle}_cover.${ext}`
                     const imagePath = `${folder}/${safeName}`
-                    
+
                     await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
                     coverUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${imagePath}`
                 } catch (err) {
@@ -1039,7 +1039,7 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                     return
                 }
             }
-            
+
             posts[idx].cover = coverUrl
             posts[idx].title = title.value.trim()
             posts[idx].desc = desc.value.trim()
@@ -1056,21 +1056,21 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
             await customAlert('密码错误：需要主密码以发布/编辑文章', '密码错误')
             return
         }
-        
+
         const useRemote = remoteCheckbox.checked
         const tokenVal = token.value.trim()
-        
+
         if (useRemote && !tokenVal) {
             await customAlert('要同步到 GitHub，请提供 Personal Access Token', '提示')
             return
         }
-        
+
         const posts = getPosts()
 
         if (mode === 'create') {
             const id = Date.now()
             let coverUrl = cover.value.trim()
-            
+
             // 如果选择了本地封面，先上传
             if (useRemote && coverFile.files && coverFile.files[0]) {
                 try {
@@ -1085,8 +1085,8 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                     const folder = REPO_PATH_MAP[cat.value] || 'Essay'
                     const safeName = Date.now() + '_' + file.name.replace(/[^a-z0-9.\-]/ig, '_')
                     const imagePath = `${folder}/${safeName}`
-                    
-                        await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
+
+                    await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
                     coverUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${imagePath}`
                 } catch (err) {
                     await customAlert('封面上传失败：' + err.message, '上传失败')
@@ -1094,7 +1094,7 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                     return
                 }
             }
-            
+
             const newPost = {
                 id,
                 type: 'article',
@@ -1112,13 +1112,13 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                 await customAlert('原文章未找到')
                 return
             }
-            
+
             const oldTitle = posts[idx].title
             const oldCategory = posts[idx].category
             const oldRepoPath = posts[idx].repoPath
-            
+
             let coverUrl = cover.value.trim()
-            
+
             // 如果选择了本地封面，先上传
             if (useRemote && coverFile.files && coverFile.files[0]) {
                 try {
@@ -1133,8 +1133,8 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                     const folder = REPO_PATH_MAP[cat.value] || 'Essay'
                     const safeName = Date.now() + '_' + file.name.replace(/[^a-z0-9.\-]/ig, '_')
                     const imagePath = `${folder}/${safeName}`
-                    
-                        await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
+
+                    await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
                     coverUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${imagePath}`
                 } catch (err) {
                     await customAlert('封面上传失败：' + err.message, '上传失败')
@@ -1142,26 +1142,26 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                     return
                 }
             }
-            
+
             // 更新文章元数据
             posts[idx].cover = coverUrl
             posts[idx].title = title.value.trim()
             posts[idx].desc = desc.value.trim()
             posts[idx].category = cat.value
-            
+
             // 如果标题或分类改变，且文章已同步到 GitHub，需要更新远程文件
             const titleChanged = oldTitle !== posts[idx].title
             const categoryChanged = oldCategory !== posts[idx].category
-            
+
             if (oldRepoPath && (titleChanged || categoryChanged)) {
                 if (useRemote && tokenVal) {
                     const confirmUpdate = await customConfirm('⚠️ 检测到标题或分类已更改\n\n是否同步更新 GitHub 上的文章？\n\n注意：旧文件会被删除，新文件会被创建', '确认更新')
-                    
+
                     if (confirmUpdate) {
                         try {
                             // 删除旧文件
                             await deleteFileFromRepo({ ...posts[idx], title: oldTitle, category: oldCategory, repoPath: oldRepoPath }, tokenVal)
-                            
+
                             // 上传新文件（如果有内容）
                             if (posts[idx].content) {
                                 const res = await uploadFileToRepo(posts[idx], tokenVal)
@@ -1187,10 +1187,10 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                     posts[idx].repoSha = null
                 }
             }
-            
+
             savePosts(posts)
         }
-        
+
         document.body.removeChild(backdrop)
         router()
     })
@@ -1203,23 +1203,23 @@ async function deletePost(id) {
         await customAlert('文章不存在')
         return
     }
-    
+
     const post = posts[idx]
-    
+
     // 如果文章已同步到 GitHub，询问是否删除远程文件
     if (post.repoPath) {
         const confirmDelete = await customConfirm('⚠️ 此文章已同步到 GitHub\n\n确定要删除吗？（需要输入 Token 才能删除远程文件）', '确认删除')
         if (!confirmDelete) return
-        
+
         const input = await customPrompt('请输入主密码以删除文章：', '', '输入密码', 'password', '验证密码')
         if (input === null) return
         if (input !== MASTER) {
             await customAlert('密码错误', '错误')
             return
         }
-        
+
         const token = await customPrompt('请输入 GitHub Token（删除远程文件）：\n\n如果不输入，将仅删除本地文章', '', 'GitHub Token (可选)', 'password', 'GitHub Token')
-        
+
         if (token && token.trim()) {
             // 尝试从 GitHub 删除
             try {
@@ -1249,12 +1249,12 @@ async function deletePost(id) {
             await customAlert('密码错误', '错误')
             return
         }
-        
+
         posts.splice(idx, 1)
         savePosts(posts)
         await customAlert('✅ 删除成功！', '删除成功')
     }
-    
+
     router()
 }
 
@@ -1283,7 +1283,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (cachedVersion !== APP_VERSION) {
         console.log('New version detected, clearing cache...')
         localStorage.setItem('app_version', APP_VERSION)
-        
+
         // 清除 Service Worker 缓存
         if ('serviceWorker' in navigator) {
             caches.keys().then(cacheNames => {
@@ -1299,7 +1299,7 @@ document.addEventListener('DOMContentLoaded', () => {
             })
         }
     }
-    
+
     // 注册 Service Worker
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./sw.js?v=' + APP_VERSION)
@@ -1310,7 +1310,7 @@ document.addEventListener('DOMContentLoaded', () => {
             })
             .catch(err => console.warn('Service Worker registration failed:', err))
     }
-    
+
     document.getElementById('langBtn').addEventListener('click', () => {
         currentLang = currentLang === 'zh' ? 'en' : 'zh'
         document.getElementById('langBtn').innerText = currentLang === 'zh' ? 'EN' : '中文'
@@ -1325,7 +1325,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const k = a.dataset.key
         a.innerText = t(k)
     })
-    
+
     setBackground()
     window.addEventListener('hashchange', router)
     router()
