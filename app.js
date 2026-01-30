@@ -11,6 +11,19 @@ const USER_CONTACT = [
     { type: 'GitHub', value: 'https://github.com/aurorarain' }
 ]
 
+// 防抖函数 - 性能优化
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
 // 多语言文案
 const i18n = {
     zh: {
@@ -96,6 +109,20 @@ async function uploadContentToRepo(targetPath, base64Content, token, message = '
     return { sha: j.content && j.content.sha, path: j.content && j.content.path };
 }
 
+// 从 raw.githubusercontent.com 拉取原始文件内容（用于 GitHub Pages 上按需加载 Markdown）
+async function fetchRawFile(path) {
+    if (!path) return null
+    try {
+        const url = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${path}`
+        const res = await fetch(url)
+        if (!res.ok) throw new Error('fetch failed ' + res.status)
+        return await res.text()
+    } catch (e) {
+        console.warn('fetchRawFile error', e)
+        return null
+    }
+}
+
 // 专门用于文章 Markdown 上传：根据文章分类映射到对应目录
 async function uploadFileToRepo(post, token) {
     const folder = REPO_PATH_MAP[post.category] || REPO_PATH_MAP['随笔'] || '';
@@ -125,21 +152,224 @@ async function deleteFileFromRepo(post, token) {
 function renderEditPage(id) {
     const post = getPosts().find(p => p.id == id)
     if (!post) return alert('文章未找到')
-    document.getElementById('app').innerHTML = `<section class="card"><h2>编辑正文：${escapeHtml(post.title)}</h2>
-        <div style="display:flex;gap:12px;flex-direction:column;margin-top:8px"><textarea id="full-md" style="width:100%;min-height:400px">${escapeHtml(post.content || '')}</textarea>
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px"><input id="edit-token" placeholder="GitHub Token（用于同步）" style="flex:1"/><button id="save-md">保存并同步</button><button id="cancel-md">取消</button><button id="admin-md">后台编辑</button><button id="delete-md">删除</button><button id="preview-md">预览</button></div>
-        <div id="md-preview" style="margin-top:12px"></div></div></section>`
+    document.getElementById('app').innerHTML = `<section class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <h2>编辑正文：${escapeHtml(post.title)}</h2>
+            <div style="display:flex;gap:8px">
+                <button id="admin-md" title="编辑元数据">⚙️ 设置</button>
+                <button id="delete-md" title="删除文章" style="color:#d73a49">🗑️ 删除</button>
+            </div>
+        </div>
+        <div style="display:flex;gap:12px;flex-direction:column">
+            <textarea id="full-md" style="width:100%;min-height:400px">${escapeHtml(post.content || '')}</textarea>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <input id="edit-token" placeholder="GitHub Token（用于同步）" style="flex:1;min-width:200px"/>
+                <button id="save-md" style="background:#28a745;color:white;border-color:#28a745">💾 保存并同步</button>
+                <button id="cancel-md">❌ 取消</button>
+            </div>
+        </div>
+    </section>`
 
     const textarea = document.getElementById('full-md')
-    const previewEl = document.getElementById('md-preview')
-    function renderPreview() { const md = textarea.value; const out = window.marked ? marked.parse(md) : '<pre>' + escapeHtml(md) + '</pre>'; previewEl.innerHTML = out }
-    // 实时预览
-    textarea.addEventListener('input', renderPreview)
-    document.getElementById('preview-md').addEventListener('click', renderPreview)
-    renderPreview()
+    let easyMDE = null
+    
+    // 安全的 Markdown 渲染函数
+    function renderMarkdown(md) {
+        if (!md) return '';
+        if (window.marked) {
+            try {
+                // 配置 marked 以提高安全性和兼容性
+                marked.setOptions({
+                    breaks: true,
+                    gfm: true,
+                    headerIds: true,
+                    mangle: false,
+                    sanitize: false,
+                    smartLists: true,
+                    smartypants: false,
+                    xhtml: false
+                });
+                return marked.parse(md);
+            } catch (e) {
+                console.error('Markdown parsing error:', e);
+                return '<pre>' + escapeHtml(md) + '</pre>';
+            }
+        }
+        return '<pre>' + escapeHtml(md) + '</pre>';
+    }
+
+    // 如果 EasyMDE 已加载，则用它增强编辑体验（侧边实时预览、工具栏等）
+    if (window.EasyMDE) {
+        try {
+            easyMDE = new EasyMDE({
+                element: textarea,
+                spellChecker: false,
+                status: ['lines', 'words', 'cursor'],
+                autosave: { 
+                    enabled: true,
+                    uniqueId: 'post_' + id,
+                    delay: 1000
+                },
+                toolbar: [
+                    {
+                        name: 'bold',
+                        action: EasyMDE.toggleBold,
+                        className: 'fa fa-bold',
+                        title: '粗体 (Ctrl+B)'
+                    },
+                    {
+                        name: 'italic',
+                        action: EasyMDE.toggleItalic,
+                        className: 'fa fa-italic',
+                        title: '斜体 (Ctrl+I)'
+                    },
+                    {
+                        name: 'strikethrough',
+                        action: EasyMDE.toggleStrikethrough,
+                        className: 'fa fa-strikethrough',
+                        title: '删除线'
+                    },
+                    '|',
+                    {
+                        name: 'heading-1',
+                        action: EasyMDE.toggleHeading1,
+                        className: 'fa fa-header fa-header-x fa-header-1',
+                        title: '一级标题'
+                    },
+                    {
+                        name: 'heading-2',
+                        action: EasyMDE.toggleHeading2,
+                        className: 'fa fa-header fa-header-x fa-header-2',
+                        title: '二级标题'
+                    },
+                    {
+                        name: 'heading-3',
+                        action: EasyMDE.toggleHeading3,
+                        className: 'fa fa-header fa-header-x fa-header-3',
+                        title: '三级标题'
+                    },
+                    '|',
+                    {
+                        name: 'quote',
+                        action: EasyMDE.toggleBlockquote,
+                        className: 'fa fa-quote-left',
+                        title: '引用'
+                    },
+                    {
+                        name: 'unordered-list',
+                        action: EasyMDE.toggleUnorderedList,
+                        className: 'fa fa-list-ul',
+                        title: '无序列表'
+                    },
+                    {
+                        name: 'ordered-list',
+                        action: EasyMDE.toggleOrderedList,
+                        className: 'fa fa-list-ol',
+                        title: '有序列表'
+                    },
+                    '|',
+                    {
+                        name: 'code',
+                        action: EasyMDE.toggleCodeBlock,
+                        className: 'fa fa-code',
+                        title: '代码块'
+                    },
+                    {
+                        name: 'link',
+                        action: EasyMDE.drawLink,
+                        className: 'fa fa-link',
+                        title: '插入链接 (Ctrl+K)'
+                    },
+                    {
+                        name: 'image',
+                        action: EasyMDE.drawImage,
+                        className: 'fa fa-picture-o',
+                        title: '插入图片'
+                    },
+                    {
+                        name: 'table',
+                        action: EasyMDE.drawTable,
+                        className: 'fa fa-table',
+                        title: '插入表格'
+                    },
+                    '|',
+                    {
+                        name: 'preview',
+                        action: EasyMDE.togglePreview,
+                        className: 'fa fa-eye no-disable',
+                        title: '预览'
+                    },
+                    {
+                        name: 'side-by-side',
+                        action: EasyMDE.toggleSideBySide,
+                        className: 'fa fa-columns no-disable no-mobile',
+                        title: '分屏预览'
+                    },
+                    {
+                        name: 'fullscreen',
+                        action: EasyMDE.toggleFullScreen,
+                        className: 'fa fa-arrows-alt no-disable no-mobile',
+                        title: '全屏 (F11)'
+                    },
+                    '|',
+                    {
+                        name: 'guide',
+                        action: 'https://www.markdownguide.org/basic-syntax/',
+                        className: 'fa fa-question-circle',
+                        title: 'Markdown 指南'
+                    },
+                    {
+                        name: 'undo',
+                        action: EasyMDE.undo,
+                        className: 'fa fa-undo no-disable',
+                        title: '撤销 (Ctrl+Z)'
+                    },
+                    {
+                        name: 'redo',
+                        action: EasyMDE.redo,
+                        className: 'fa fa-repeat no-disable',
+                        title: '重做 (Ctrl+Y)'
+                    }
+                ],
+                previewRender: function (plainText) {
+                    return renderMarkdown(plainText);
+                },
+                placeholder: '请输入 Markdown 内容...\n\n支持 GitHub Flavored Markdown (GFM) 语法',
+                tabSize: 4,
+                indentWithTabs: false,
+                lineWrapping: true,
+                sideBySideFullscreen: false,
+                shortcuts: {
+                    toggleBold: 'Ctrl-B',
+                    toggleItalic: 'Ctrl-I',
+                    drawLink: 'Ctrl-K',
+                    toggleHeadingSmaller: 'Ctrl-H',
+                    toggleCodeBlock: 'Ctrl-Alt-C',
+                    togglePreview: 'Ctrl-P',
+                    toggleSideBySide: 'F9',
+                    toggleFullScreen: 'F11'
+                }
+            })
+        } catch (e) {
+            console.warn('EasyMDE init failed', e)
+            easyMDE = null
+        }
+    }
+    // 如果本地没有正文但文章包含远端路径，尝试从 raw.githubusercontent.com 拉取
+    if ((!post.content || post.content.trim() === '') && post.repoPath) {
+        fetchRawFile(post.repoPath).then(txt => {
+            if (txt) {
+                if (easyMDE) { easyMDE.value(txt) } else { textarea.value = txt }
+                // 也把内容保存到本地缓存，减少后续请求
+                const posts = getPosts(); const idx = posts.findIndex(p => p.id == id); if (idx !== -1) { posts[idx].content = txt; savePosts(posts) }
+            }
+        }).catch(e => {
+            console.error('Failed to fetch remote content:', e);
+        })
+    }
 
     document.getElementById('save-md').addEventListener('click', async () => {
-        const md = document.getElementById('full-md').value
+        const md = easyMDE ? easyMDE.value() : document.getElementById('full-md').value
         const token = document.getElementById('edit-token').value.trim()
         const posts = getPosts(); const idx = posts.findIndex(p => p.id == id)
         if (idx === -1) return alert('文章未找到')
@@ -147,16 +377,18 @@ function renderEditPage(id) {
         if (token) {
             try {
                 const res = await uploadFileToRepo(posts[idx], token);
-                posts[idx].repoSha = res.sha; // 保存文件的 SHA 值
+                posts[idx].repoSha = res.sha;
                 posts[idx].repoPath = res.path;
                 savePosts(posts);
+                alert('保存并同步成功！')
             } catch (e) {
                 alert('远程同步失败：' + e.message)
                 console.warn(e)
                 return
             }
+        } else {
+            alert('保存成功！（未同步到远程）')
         }
-        alert('保存成功')
         // 保存后返回文章页
         location.hash = 'post-' + id
     })
@@ -165,23 +397,29 @@ function renderEditPage(id) {
     document.getElementById('admin-md').addEventListener('click', () => { openEditor({ mode: 'edit', post }) })
 
     document.getElementById('delete-md').addEventListener('click', async () => {
+        if (!confirm('确定要删除这篇文章吗？此操作不可恢复！')) return;
+        
         const token = document.getElementById('edit-token').value.trim()
         const posts = getPosts(); const idx = posts.findIndex(p => p.id == id)
         if (idx === -1) return alert('文章未找到')
 
-        if (token) {
+        if (post.repoPath && token) {
             try {
                 await deleteFileFromRepo(posts[idx], token);
-                posts.splice(idx, 1); // 从本地删除文章
+                posts.splice(idx, 1);
                 savePosts(posts);
+                alert('删除成功（包括远程文件）')
             } catch (e) {
                 alert('远程删除失败：' + e.message)
                 console.warn(e)
                 return
             }
+        } else {
+            posts.splice(idx, 1);
+            savePosts(posts);
+            alert('删除成功')
         }
 
-        alert('删除成功')
         location.hash = 'categories'
     })
 }
@@ -251,10 +489,28 @@ function renderHome(root) {
 function renderPostDetail(id) {
     const p = getPosts().find(x => x.id == id) || { title: '未找到', desc: '', content: '' }
     // 不在正文内渲染“返回”文字按钮，使用页面左上角的箭头（history.back）处理返回
-    document.getElementById('app').innerHTML = `<section class="card"><div style="display:flex;justify-content:space-between;align-items:center"><h2 class="pd-title">${escapeHtml(p.title)}</h2><div><button id="jump-edit">编辑</button></div></div><p class="pd-desc">${escapeHtml(p.desc)}</p><hr/><div class="pd-content">${p.content ? (window.marked ? marked.parse(p.content) : '<pre>' + escapeHtml(p.content) + '</pre>') : ''}</div></section>`
+    document.getElementById('app').innerHTML = `<section class="card"><div style="display:flex;justify-content:space-between;align-items:center"><h2 class="pd-title">${escapeHtml(p.title)}</h2><div><button id="jump-edit">编辑</button></div></div><p class="pd-desc">${escapeHtml(p.desc)}</p><hr/><div class="pd-content markdown-body">${p.content ? (window.marked ? (function(){try{marked.setOptions({breaks:true,gfm:true,headerIds:true,mangle:false,sanitize:false,smartLists:true,smartypants:false,xhtml:false});return marked.parse(p.content)}catch(e){console.error('Markdown error:',e);return '<pre>'+escapeHtml(p.content)+'</pre>'}})() : '<pre>' + escapeHtml(p.content) + '</pre>') : '<p>正在加载正文...</p>'}</div></section>`
     // 文章页面增加跳转到编辑页
     const jumpBtn = document.getElementById('jump-edit')
     if (jumpBtn) jumpBtn.addEventListener('click', () => { location.hash = 'edit-' + id })
+    // 如果本地没有正文但存在远端 repoPath，则尝试从 raw.githubusercontent.com 拉取并渲染
+    if ((!p.content || p.content.trim() === '') && p.repoPath) {
+        const contentEl = document.querySelector('.pd-content')
+        if (contentEl) {
+            contentEl.innerHTML = '<p>正在从远端加载文章内容……</p>'
+            fetchRawFile(p.repoPath).then(txt => {
+                if (txt) {
+                    p.content = txt
+                    // 保存到本地以便离线查看
+                    const posts = getPosts(); const idx = posts.findIndex(x => x.id == id); if (idx !== -1) { posts[idx].content = txt; savePosts(posts) }
+                    const out = window.marked ? (function(){try{marked.setOptions({breaks:true,gfm:true,headerIds:true,mangle:false,sanitize:false,smartLists:true,smartypants:false,xhtml:false});return marked.parse(txt)}catch(e){console.error('Markdown error:',e);return '<pre>'+escapeHtml(txt)+'</pre>'}})() : '<pre>' + escapeHtml(txt) + '</pre>'
+                    contentEl.innerHTML = out
+                } else {
+                    contentEl.innerHTML = '<p>无法加载远端内容</p>'
+                }
+            }).catch(e => { console.warn(e); contentEl.innerHTML = '<p>加载失败</p>' })
+        }
+    }
     if (currentLang === 'en') {
         translateText(p.title, 'en').then(tt => { const el = document.querySelector('.pd-title'); if (el) el.innerText = tt })
         translateText(p.desc, 'en').then(td => { const el = document.querySelector('.pd-desc'); if (el) el.innerText = td })

@@ -2,33 +2,51 @@
 <html lang="zh-CN">
 
 <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+    <meta name="description" content="嵇志豪的个人博客网站，分享技术文章和个人见解">
+    <meta name="theme-color" content="#ffffff">
     <title>嵇志豪的个人网站</title>
+    
+    <!-- Preconnect to CDN for faster resource loading -->
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+    <link rel="dns-prefetch" href="https://api.github.com">
+    <link rel="dns-prefetch" href="https://raw.githubusercontent.com">
+    
+    <!-- Critical CSS -->
     <link rel="stylesheet" href="styles.css">
+    
+    <!-- Preload critical resources -->
+    <link rel="preload" href="app.js" as="script">
+    
+    <!-- EasyMDE Markdown editor - load async -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css"></noscript>
 </head>
 
 <body>
     <div class="bg-overlay"></div>
 
-    <button class="back-btn" onclick="goBack()">←</button>
+    <button class="back-btn" onclick="goBack()" aria-label="返回上一页">←</button>
 
     <header class="topbar">
-        <nav class="nav">
+        <nav class="nav" role="navigation" aria-label="主导航">
             <a href="#home" class="nav-item" data-key="nav.home">首页</a>
             <a href="#categories" class="nav-item" data-key="nav.categories">分类</a>
             <a href="#board" class="nav-item" data-key="nav.board">留言板</a>
         </nav>
         <div class="actions">
-            <button id="langBtn">EN</button>
+            <button id="langBtn" aria-label="切换语言">EN</button>
         </div>
     </header>
 
-    <main id="app" class="container"></main>
+    <main id="app" class="container" role="main"></main>
 
-    <!-- Marked.js 用于 Markdown 渲染 -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="app.js"></script>
+    <!-- Marked.js 用于 Markdown 渲染 - defer for better performance -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js" defer></script>
+    <script src="app.js" defer></script>
 </body>
 
 </html>
