@@ -231,18 +231,18 @@ function renderEditPage(id) {
         
         if (token) {
             try {
+                // 上传文章内容到 GitHub
                 const res = await uploadFileToRepo(posts[idx], token)
                 posts[idx].repoSha = res.sha
                 posts[idx].repoPath = res.path
                 savePosts(posts)
-                alert('保存并同步成功！')
+                alert('✅ 保存并同步到 GitHub 成功！\n\n文章路径：' + res.path)
             } catch (e) {
-                alert('远程同步失败：' + e.message)
-                console.warn(e)
-                return
+                alert('❌ 远程同步失败：' + e.message + '\n\n文章已保存到本地')
+                console.error('GitHub sync error:', e)
             }
         } else {
-            alert('保存成功！（未同步到远程）')
+            alert('✅ 保存成功！\n\n💡 提示：输入 GitHub Token 可同步到远程仓库')
         }
         
         location.hash = 'post-' + id
@@ -257,7 +257,7 @@ function renderEditPage(id) {
     })
 
     document.getElementById('delete-md').addEventListener('click', async () => {
-        if (!confirm('确定要删除这篇文章吗？此操作不可恢复！')) return
+        if (!confirm('⚠️ 确定要删除这篇文章吗？\n\n此操作不可恢复！')) return
         
         const token = document.getElementById('edit-token').value.trim()
         const posts = getPosts()
@@ -265,21 +265,27 @@ function renderEditPage(id) {
         
         if (idx === -1) return alert('文章未找到')
 
+        // 如果文章已同步到 GitHub 且提供了 Token，则从远程删除
         if (post.repoPath && token) {
             try {
                 await deleteFileFromRepo(posts[idx], token)
                 posts.splice(idx, 1)
                 savePosts(posts)
-                alert('删除成功（包括远程文件）')
+                alert('✅ 删除成功！\n\n已从本地和 GitHub 仓库中删除')
             } catch (e) {
-                alert('远程删除失败：' + e.message)
-                console.warn(e)
-                return
+                const confirmLocal = confirm('❌ GitHub 删除失败：' + e.message + '\n\n是否仅删除本地文章？')
+                if (confirmLocal) {
+                    posts.splice(idx, 1)
+                    savePosts(posts)
+                    alert('✅ 已删除本地文章')
+                } else {
+                    return
+                }
             }
         } else {
             posts.splice(idx, 1)
             savePosts(posts)
-            alert('删除成功')
+            alert('✅ 删除成功！')
         }
 
         location.hash = 'categories'
@@ -506,10 +512,13 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
     modal.className = 'modal'
     modal.innerHTML = `
         <div><strong>${mode === 'create' ? '发布文章' : '编辑文章'}</strong></div>
-        <div class="row"><label>封面</label><input id="ed-cover" type="url" placeholder="封面图片地址 (可选)"></div>
+        <div class="row"><label>封面URL</label><input id="ed-cover" type="url" placeholder="封面图片地址 (可选)"></div>
+        <div class="row"><label>本地封面</label><input id="ed-cover-file" type="file" accept="image/*"></div>
         <div class="row"><label>标题</label><input id="ed-title" type="text" placeholder="文章标题"></div>
         <div class="row"><label>简介</label><input id="ed-desc" type="text" placeholder="文章简介"></div>
         <div class="row"><label>分类</label><select id="ed-cat">${categories.map(c => `<option>${c}</option>`).join('')}</select></div>
+        <div class="row"><label>同步GitHub</label><label style="flex:1"><input id="ed-remote" type="checkbox"> 发布到 GitHub 仓库</label></div>
+        <div class="row"><label>GitHub Token</label><input id="ed-token" type="password" placeholder="GitHub Personal Access Token"></div>
         <div class="row"><label>密码</label><input id="ed-pwd" type="password" placeholder="输入主密码以确认发布/编辑"></div>
         <div class="actions">
             <button id="ed-open-full" style="margin-right:auto">编辑正文</button>
@@ -521,10 +530,13 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
     document.body.appendChild(backdrop)
 
     const cover = modal.querySelector('#ed-cover')
+    const coverFile = modal.querySelector('#ed-cover-file')
     const title = modal.querySelector('#ed-title')
     const desc = modal.querySelector('#ed-desc')
     const cat = modal.querySelector('#ed-cat')
     const pwd = modal.querySelector('#ed-pwd')
+    const remoteCheckbox = modal.querySelector('#ed-remote')
+    const token = modal.querySelector('#ed-token')
     
     if (post) {
         cover.value = post.cover || ''
@@ -541,16 +553,49 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
         document.body.removeChild(backdrop)
     })
 
-    modal.querySelector('#ed-open-full').addEventListener('click', () => {
+    modal.querySelector('#ed-open-full').addEventListener('click', async () => {
         const provided = pwd.value || ''
         if (provided !== MASTER) return alert('密码错误：需要主密码以发布/编辑文章')
         
+        const useRemote = remoteCheckbox.checked
+        const tokenVal = token.value.trim()
+        
+        if (useRemote && !tokenVal) {
+            return alert('要同步到 GitHub，请提供 Personal Access Token')
+        }
+        
         if (mode === 'create') {
             const id = Date.now()
+            let coverUrl = cover.value.trim()
+            
+            // 如果选择了本地封面，先上传
+            if (useRemote && coverFile.files && coverFile.files[0]) {
+                try {
+                    const file = coverFile.files[0]
+                    const buffer = await new Promise((resolve, reject) => {
+                        const reader = new FileReader()
+                        reader.onload = () => resolve(reader.result)
+                        reader.onerror = reject
+                        reader.readAsArrayBuffer(file)
+                    })
+                    const base64 = arrayBufferToBase64(buffer)
+                    const folder = REPO_PATH_MAP[cat.value] || 'Essay'
+                    const safeName = Date.now() + '_' + file.name.replace(/[^a-z0-9.\-]/ig, '_')
+                    const imagePath = `${folder}/${safeName}`
+                    
+                    await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
+                    coverUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${imagePath}`
+                } catch (err) {
+                    alert('封面上传失败：' + err.message)
+                    console.error(err)
+                    return
+                }
+            }
+            
             const newPost = {
                 id,
                 type: 'article',
-                cover: cover.value.trim(),
+                cover: coverUrl,
                 title: title.value.trim(),
                 desc: desc.value.trim(),
                 category: cat.value,
@@ -565,7 +610,34 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
             const posts = getPosts()
             const idx = posts.findIndex(p => p.id === post.id)
             if (idx === -1) return alert('文章未找到')
-            posts[idx].cover = cover.value.trim()
+            
+            let coverUrl = cover.value.trim()
+            
+            // 如果选择了本地封面，先上传
+            if (useRemote && coverFile.files && coverFile.files[0]) {
+                try {
+                    const file = coverFile.files[0]
+                    const buffer = await new Promise((resolve, reject) => {
+                        const reader = new FileReader()
+                        reader.onload = () => resolve(reader.result)
+                        reader.onerror = reject
+                        reader.readAsArrayBuffer(file)
+                    })
+                    const base64 = arrayBufferToBase64(buffer)
+                    const folder = REPO_PATH_MAP[cat.value] || 'Essay'
+                    const safeName = Date.now() + '_' + file.name.replace(/[^a-z0-9.\-]/ig, '_')
+                    const imagePath = `${folder}/${safeName}`
+                    
+                    await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
+                    coverUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${imagePath}`
+                } catch (err) {
+                    alert('封面上传失败：' + err.message)
+                    console.error(err)
+                    return
+                }
+            }
+            
+            posts[idx].cover = coverUrl
             posts[idx].title = title.value.trim()
             posts[idx].desc = desc.value.trim()
             posts[idx].category = cat.value
@@ -575,18 +647,51 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
         }
     })
 
-    modal.querySelector('#ed-save').addEventListener('click', () => {
+    modal.querySelector('#ed-save').addEventListener('click', async () => {
         const provided = pwd.value || ''
         if (provided !== MASTER) return alert('密码错误：需要主密码以发布/编辑文章')
+        
+        const useRemote = remoteCheckbox.checked
+        const tokenVal = token.value.trim()
+        
+        if (useRemote && !tokenVal) {
+            return alert('要同步到 GitHub，请提供 Personal Access Token')
+        }
         
         const posts = getPosts()
         
         if (mode === 'create') {
             const id = Date.now()
+            let coverUrl = cover.value.trim()
+            
+            // 如果选择了本地封面，先上传
+            if (useRemote && coverFile.files && coverFile.files[0]) {
+                try {
+                    const file = coverFile.files[0]
+                    const buffer = await new Promise((resolve, reject) => {
+                        const reader = new FileReader()
+                        reader.onload = () => resolve(reader.result)
+                        reader.onerror = reject
+                        reader.readAsArrayBuffer(file)
+                    })
+                    const base64 = arrayBufferToBase64(buffer)
+                    const folder = REPO_PATH_MAP[cat.value] || 'Essay'
+                    const safeName = Date.now() + '_' + file.name.replace(/[^a-z0-9.\-]/ig, '_')
+                    const imagePath = `${folder}/${safeName}`
+                    
+                    await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
+                    coverUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${imagePath}`
+                } catch (err) {
+                    alert('封面上传失败：' + err.message)
+                    console.error(err)
+                    return
+                }
+            }
+            
             const newPost = {
                 id,
                 type: 'article',
-                cover: cover.value.trim(),
+                cover: coverUrl,
                 title: title.value.trim(),
                 desc: desc.value.trim(),
                 category: cat.value,
@@ -597,10 +702,74 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
         } else {
             const idx = posts.findIndex(p => p.id === post.id)
             if (idx === -1) return alert('原文章未找到')
-            posts[idx].cover = cover.value.trim()
+            
+            const oldTitle = posts[idx].title
+            const oldCategory = posts[idx].category
+            const oldRepoPath = posts[idx].repoPath
+            
+            let coverUrl = cover.value.trim()
+            
+            // 如果选择了本地封面，先上传
+            if (useRemote && coverFile.files && coverFile.files[0]) {
+                try {
+                    const file = coverFile.files[0]
+                    const buffer = await new Promise((resolve, reject) => {
+                        const reader = new FileReader()
+                        reader.onload = () => resolve(reader.result)
+                        reader.onerror = reject
+                        reader.readAsArrayBuffer(file)
+                    })
+                    const base64 = arrayBufferToBase64(buffer)
+                    const folder = REPO_PATH_MAP[cat.value] || 'Essay'
+                    const safeName = Date.now() + '_' + file.name.replace(/[^a-z0-9.\-]/ig, '_')
+                    const imagePath = `${folder}/${safeName}`
+                    
+                    await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
+                    coverUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${imagePath}`
+                } catch (err) {
+                    alert('封面上传失败：' + err.message)
+                    console.error(err)
+                    return
+                }
+            }
+            
+            // 更新文章元数据
+            posts[idx].cover = coverUrl
             posts[idx].title = title.value.trim()
             posts[idx].desc = desc.value.trim()
             posts[idx].category = cat.value
+            
+            // 如果标题或分类改变，且文章已同步到 GitHub，需要更新远程文件
+            const titleChanged = oldTitle !== posts[idx].title
+            const categoryChanged = oldCategory !== posts[idx].category
+            
+            if (oldRepoPath && (titleChanged || categoryChanged) && useRemote && tokenVal) {
+                const confirmUpdate = confirm('⚠️ 检测到标题或分类已更改\n\n是否同步更新 GitHub 上的文章？\n\n注意：旧文件会被删除，新文件会被创建')
+                
+                if (confirmUpdate) {
+                    try {
+                        // 删除旧文件
+                        await deleteFileFromRepo({ ...posts[idx], title: oldTitle, category: oldCategory, repoPath: oldRepoPath }, tokenVal)
+                        
+                        // 上传新文件（如果有内容）
+                        if (posts[idx].content) {
+                            const res = await uploadFileToRepo(posts[idx], tokenVal)
+                            posts[idx].repoSha = res.sha
+                            posts[idx].repoPath = res.path
+                            alert('✅ GitHub 同步成功！\n\n旧文件已删除，新文件已创建\n路径：' + res.path)
+                        } else {
+                            // 清除 repoPath，因为旧文件已删除但新文件还没内容
+                            posts[idx].repoPath = null
+                            posts[idx].repoSha = null
+                            alert('✅ 旧文件已从 GitHub 删除\n\n💡 提示：编辑正文并保存后会创建新文件')
+                        }
+                    } catch (err) {
+                        alert('❌ GitHub 同步失败：' + err.message + '\n\n元数据已保存到本地')
+                        console.error(err)
+                    }
+                }
+            }
+            
             savePosts(posts)
         }
         
@@ -610,17 +779,55 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
 }
 
 async function deletePost(id) {
-    const input = prompt('请输入主密码以删除文章：')
-    if (input === null) return
-    if (input !== MASTER) return alert('密码错误')
-    
     const posts = getPosts()
     const idx = posts.findIndex(p => p.id === id)
     if (idx === -1) return alert('文章不存在')
     
-    posts.splice(idx, 1)
-    savePosts(posts)
-    alert('删除成功')
+    const post = posts[idx]
+    
+    // 如果文章已同步到 GitHub，询问是否删除远程文件
+    if (post.repoPath) {
+        const confirmDelete = confirm('⚠️ 此文章已同步到 GitHub\n\n确定要删除吗？（需要输入 Token 才能删除远程文件）')
+        if (!confirmDelete) return
+        
+        const input = prompt('请输入主密码以删除文章：')
+        if (input === null) return
+        if (input !== MASTER) return alert('密码错误')
+        
+        const token = prompt('请输入 GitHub Token（删除远程文件）：\n\n如果不输入，将仅删除本地文章')
+        
+        if (token && token.trim()) {
+            // 尝试从 GitHub 删除
+            try {
+                await deleteFileFromRepo(post, token.trim())
+                posts.splice(idx, 1)
+                savePosts(posts)
+                alert('✅ 删除成功！\n\n已从本地和 GitHub 仓库中删除')
+            } catch (e) {
+                const confirmLocal = confirm('❌ GitHub 删除失败：' + e.message + '\n\n是否仅删除本地文章？')
+                if (confirmLocal) {
+                    posts.splice(idx, 1)
+                    savePosts(posts)
+                    alert('✅ 已删除本地文章\n\n⚠️ GitHub 上的文件未删除')
+                }
+            }
+        } else {
+            // 仅删除本地
+            posts.splice(idx, 1)
+            savePosts(posts)
+            alert('✅ 已删除本地文章\n\n⚠️ GitHub 上的文件未删除')
+        }
+    } else {
+        // 文章未同步，直接删除
+        const input = prompt('请输入主密码以删除文章：')
+        if (input === null) return
+        if (input !== MASTER) return alert('密码错误')
+        
+        posts.splice(idx, 1)
+        savePosts(posts)
+        alert('✅ 删除成功！')
+    }
+    
     router()
 }
 
