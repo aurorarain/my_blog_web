@@ -10,6 +10,153 @@ const USER_CONTACT = [
     { type: 'GitHub', value: 'https://github.com/aurorarain' }
 ]
 
+// 性能优化工具函数
+function debounce(func, wait) {
+    let timeout
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout)
+            func(...args)
+        }
+        clearTimeout(timeout)
+        timeout = setTimeout(later, wait)
+    }
+}
+
+function throttle(func, limit) {
+    let inThrottle
+    return function(...args) {
+        if (!inThrottle) {
+            func.apply(this, args)
+            inThrottle = true
+            setTimeout(() => inThrottle = false, limit)
+        }
+    }
+}
+
+// 批量 DOM 更新
+function batchDOMUpdate(callback) {
+    requestAnimationFrame(() => {
+        callback()
+    })
+}
+
+// 自定义弹窗组件
+function showDialog({ title = '提示', message = '', type = 'alert', inputType = 'text', placeholder = '', defaultValue = '' } = {}) {
+    return new Promise((resolve) => {
+        const backdrop = document.createElement('div')
+        backdrop.className = 'dialog-backdrop'
+        
+        const dialog = document.createElement('div')
+        dialog.className = 'dialog-box'
+        
+        let inputHtml = ''
+        if (type === 'prompt') {
+            inputHtml = `<input type="${inputType}" id="dialog-input" class="dialog-input" placeholder="${placeholder}" value="${defaultValue}">`
+        }
+        
+        let buttonsHtml = ''
+        if (type === 'confirm' || type === 'prompt') {
+            buttonsHtml = `
+                <button id="dialog-cancel" class="dialog-btn dialog-btn-cancel">取消</button>
+                <button id="dialog-ok" class="dialog-btn dialog-btn-ok">确定</button>
+            `
+        } else {
+            buttonsHtml = `<button id="dialog-ok" class="dialog-btn dialog-btn-ok">确定</button>`
+        }
+        
+        dialog.innerHTML = `
+            <div class="dialog-header">${title}</div>
+            <div class="dialog-body">
+                <div class="dialog-message">${message}</div>
+                ${inputHtml}
+            </div>
+            <div class="dialog-footer">
+                ${buttonsHtml}
+            </div>
+        `
+        
+        backdrop.appendChild(dialog)
+        document.body.appendChild(backdrop)
+        
+        // 聚焦输入框
+        if (type === 'prompt') {
+            setTimeout(() => {
+                const input = document.getElementById('dialog-input')
+                if (input) input.focus()
+            }, 100)
+        }
+        
+        // 确定按钮
+        const okBtn = document.getElementById('dialog-ok')
+        okBtn.addEventListener('click', () => {
+            if (type === 'prompt') {
+                const input = document.getElementById('dialog-input')
+                resolve(input ? input.value : null)
+            } else if (type === 'confirm') {
+                resolve(true)
+            } else {
+                resolve(true)
+            }
+            document.body.removeChild(backdrop)
+        })
+        
+        // 取消按钮
+        const cancelBtn = document.getElementById('dialog-cancel')
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => {
+                resolve(type === 'prompt' ? null : false)
+                document.body.removeChild(backdrop)
+            })
+        }
+        
+        // 点击背景关闭
+        backdrop.addEventListener('click', (e) => {
+            if (e.target === backdrop) {
+                resolve(type === 'prompt' ? null : false)
+                document.body.removeChild(backdrop)
+            }
+        })
+        
+        // ESC 键关闭
+        const escHandler = (e) => {
+            if (e.key === 'Escape') {
+                resolve(type === 'prompt' ? null : false)
+                document.body.removeChild(backdrop)
+                document.removeEventListener('keydown', escHandler)
+            }
+        }
+        document.addEventListener('keydown', escHandler)
+        
+        // Enter 键确认
+        if (type === 'prompt') {
+            const input = document.getElementById('dialog-input')
+            if (input) {
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        resolve(input.value)
+                        document.body.removeChild(backdrop)
+                        document.removeEventListener('keydown', escHandler)
+                    }
+                })
+            }
+        }
+    })
+}
+
+// 便捷方法
+async function customAlert(message, title = '提示') {
+    return await showDialog({ title, message, type: 'alert' })
+}
+
+async function customConfirm(message, title = '确认') {
+    return await showDialog({ title, message, type: 'confirm' })
+}
+
+async function customPrompt(message, defaultValue = '', placeholder = '', inputType = 'text', title = '输入') {
+    return await showDialog({ title, message, type: 'prompt', defaultValue, placeholder, inputType })
+}
+
 // 多语言
 const i18n = {
     zh: {
@@ -140,9 +287,12 @@ async function deleteFileFromRepo(post, token) {
 }
 
 // 富文本编辑器页面
-function renderEditPage(id) {
+async function renderEditPage(id) {
     const post = getPosts().find(p => p.id == id)
-    if (!post) return alert('文章未找到')
+    if (!post) {
+        await customAlert('文章未找到')
+        return
+    }
     
     document.getElementById('app').innerHTML = `<section class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
@@ -153,7 +303,9 @@ function renderEditPage(id) {
             </div>
         </div>
         <div style="display:flex;gap:12px;flex-direction:column">
-            <div id="editor-container" style="min-height:400px;background:white;border:1px solid #e6e6e6;border-radius:8px"></div>
+            <div id="editor-container" style="min-height:400px;background:white;border:1px solid #e6e6e6;border-radius:8px">
+                <div style="padding:20px;text-align:center;color:#666">正在加载编辑器...</div>
+            </div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px">
                 <input id="edit-token" placeholder="GitHub Token（用于同步）" style="flex:1;min-width:200px;padding:8px;border:1px solid #e6e6e6;border-radius:6px"/>
                 <button id="save-md" style="background:#28a745;color:white;border-color:#28a745;padding:8px 16px;border-radius:6px;cursor:pointer">💾 保存并同步</button>
@@ -164,39 +316,37 @@ function renderEditPage(id) {
 
     let quill = null
     
-    if (window.Quill) {
-        try {
-            quill = new Quill('#editor-container', {
-                theme: 'snow',
-                placeholder: '开始编写您的文章内容...',
-                modules: {
-                    toolbar: [
-                        [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
-                        [{ 'font': [] }],
-                        [{ 'size': ['small', false, 'large', 'huge'] }],
-                        ['bold', 'italic', 'underline', 'strike'],
-                        [{ 'color': [] }, { 'background': [] }],
-                        [{ 'script': 'sub'}, { 'script': 'super' }],
-                        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-                        [{ 'indent': '-1'}, { 'indent': '+1' }],
-                        [{ 'align': [] }],
-                        ['blockquote', 'code-block'],
-                        ['link', 'image', 'video'],
-                        ['clean']
-                    ]
-                }
-            })
-            
-            if (post.content) {
-                quill.root.innerHTML = post.content
+    // 动态加载 Quill
+    try {
+        await window.loadQuill()
+        
+        quill = new Quill('#editor-container', {
+            theme: 'snow',
+            placeholder: '开始编写您的文章内容...',
+            modules: {
+                toolbar: [
+                    [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
+                    [{ 'font': [] }],
+                    [{ 'size': ['small', false, 'large', 'huge'] }],
+                    ['bold', 'italic', 'underline', 'strike'],
+                    [{ 'color': [] }, { 'background': [] }],
+                    [{ 'script': 'sub'}, { 'script': 'super' }],
+                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                    [{ 'indent': '-1'}, { 'indent': '+1' }],
+                    [{ 'align': [] }],
+                    ['blockquote', 'code-block'],
+                    ['link', 'image', 'video'],
+                    ['clean']
+                ]
             }
-        } catch (e) {
-            console.error('Quill init failed', e)
-            alert('编辑器加载失败，请刷新页面重试')
-            return
+        })
+        
+        if (post.content) {
+            quill.root.innerHTML = post.content
         }
-    } else {
-        alert('编辑器未加载，请刷新页面重试')
+    } catch (e) {
+        console.error('Quill init failed', e)
+        await customAlert('编辑器加载失败，请刷新页面重试')
         return
     }
     
@@ -217,14 +367,20 @@ function renderEditPage(id) {
     }
 
     document.getElementById('save-md').addEventListener('click', async () => {
-        if (!quill) return alert('编辑器未初始化')
+        if (!quill) {
+            await customAlert('编辑器未初始化')
+            return
+        }
         
         const htmlContent = quill.root.innerHTML
         const token = document.getElementById('edit-token').value.trim()
         const posts = getPosts()
         const idx = posts.findIndex(p => p.id == id)
         
-        if (idx === -1) return alert('文章未找到')
+        if (idx === -1) {
+            await customAlert('文章未找到')
+            return
+        }
         
         posts[idx].content = htmlContent
         savePosts(posts)
@@ -236,13 +392,13 @@ function renderEditPage(id) {
                 posts[idx].repoSha = res.sha
                 posts[idx].repoPath = res.path
                 savePosts(posts)
-                alert('✅ 保存并同步到 GitHub 成功！\n\n文章路径：' + res.path)
+                await customAlert('✅ 保存并同步到 GitHub 成功！\n\n文章路径：' + res.path, '同步成功')
             } catch (e) {
-                alert('❌ 远程同步失败：' + e.message + '\n\n文章已保存到本地')
+                await customAlert('❌ 远程同步失败：' + e.message + '\n\n文章已保存到本地', '同步失败')
                 console.error('GitHub sync error:', e)
             }
         } else {
-            alert('✅ 保存成功！\n\n💡 提示：输入 GitHub Token 可同步到远程仓库')
+            await customAlert('✅ 保存成功！\n\n💡 提示：输入 GitHub Token 可同步到远程仓库', '保存成功')
         }
         
         location.hash = 'post-' + id
@@ -257,13 +413,17 @@ function renderEditPage(id) {
     })
 
     document.getElementById('delete-md').addEventListener('click', async () => {
-        if (!confirm('⚠️ 确定要删除这篇文章吗？\n\n此操作不可恢复！')) return
+        const confirmed = await customConfirm('⚠️ 确定要删除这篇文章吗？\n\n此操作不可恢复！', '确认删除')
+        if (!confirmed) return
         
         const token = document.getElementById('edit-token').value.trim()
         const posts = getPosts()
         const idx = posts.findIndex(p => p.id == id)
         
-        if (idx === -1) return alert('文章未找到')
+        if (idx === -1) {
+            await customAlert('文章未找到')
+            return
+        }
 
         // 如果文章已同步到 GitHub 且提供了 Token，则从远程删除
         if (post.repoPath && token) {
@@ -271,21 +431,21 @@ function renderEditPage(id) {
                 await deleteFileFromRepo(posts[idx], token)
                 posts.splice(idx, 1)
                 savePosts(posts)
-                alert('✅ 删除成功！\n\n已从本地和 GitHub 仓库中删除')
+                await customAlert('✅ 删除成功！\n\n已从本地和 GitHub 仓库中删除', '删除成功')
             } catch (e) {
-                const confirmLocal = confirm('❌ GitHub 删除失败：' + e.message + '\n\n是否仅删除本地文章？')
+                const confirmLocal = await customConfirm('❌ GitHub 删除失败：' + e.message + '\n\n是否仅删除本地文章？', 'GitHub 删除失败')
                 if (confirmLocal) {
                     posts.splice(idx, 1)
                     savePosts(posts)
-                    alert('✅ 已删除本地文章')
+                    await customAlert('✅ 已删除本地文章', '删除成功')
                 } else {
-                    return
+                return
                 }
             }
         } else {
             posts.splice(idx, 1)
             savePosts(posts)
-            alert('✅ 删除成功！')
+            await customAlert('✅ 删除成功！', '删除成功')
         }
 
         location.hash = 'categories'
@@ -337,13 +497,13 @@ function renderPostDetail(id) {
 }
 
 // 路由
-function router() {
+const router = debounce(function() {
     const hash = location.hash.replace('#', '') || 'home'
     if (hash.startsWith('edit-')) return renderEditPage(hash.replace('edit-', ''))
     if (hash.startsWith('post-')) return renderPostDetail(hash.replace('post-', ''))
     if (hash.startsWith('categories-')) return renderCategories(document.getElementById('app'), decodeURIComponent(hash.replace('categories-', '')))
     renderPage(hash)
-}
+}, 100)
 
 function renderPage(page) {
     const app = document.getElementById('app')
@@ -384,10 +544,13 @@ function renderCategories(root, selectedCat) {
         <div id="posts" class="posts-grid"></div>
     </section>`
 
-    document.querySelectorAll('.cat-btn').forEach(btn => btn.addEventListener('click', e => {
-        const catKey = e.currentTarget.dataset.cat
+    // 使用事件委托优化分类按钮点击
+    root.querySelector('.categories').addEventListener('click', function(e) {
+        if (e.target.classList.contains('cat-btn')) {
+            const catKey = e.target.dataset.cat
         location.hash = 'categories-' + encodeURIComponent(catKey)
-    }))
+        }
+    })
 
     document.getElementById('addArticleBtn').addEventListener('click', () => openEditor({ mode: 'create', type: 'article' }))
 
@@ -403,8 +566,12 @@ function renderPostsForCategory(cat) {
         posts = getPosts().filter(p => p.type === 'article' && p.category === cat)
     }
     const el = document.getElementById('posts')
-    el.innerHTML = posts.map(p => `<div class="post card" data-id="${p.id}">
-        <img src="${p.cover || 'https://via.placeholder.com/320x180'}" alt="${escapeHtml(p.title)}">
+    
+    // 使用 DocumentFragment 减少 DOM 重绘
+    const fragment = document.createDocumentFragment()
+    const tempDiv = document.createElement('div')
+    tempDiv.innerHTML = posts.map(p => `<div class="post card" data-id="${p.id}">
+        <img src="${p.cover || 'https://via.placeholder.com/320x180'}" alt="${escapeHtml(p.title)}" loading="lazy">
         <div>
             <h4 class="post-title">${escapeHtml(p.title)}</h4>
             <p class="post-desc">${escapeHtml(p.desc)}</p>
@@ -414,24 +581,33 @@ function renderPostsForCategory(cat) {
             <button class="del-post" data-id="${p.id}">删除</button>
         </div>
     </div>`).join('')
+    
+    while (tempDiv.firstChild) {
+        fragment.appendChild(tempDiv.firstChild)
+    }
+    
+    el.innerHTML = ''
+    el.appendChild(fragment)
 
-    document.querySelectorAll('#posts .post').forEach(card => card.addEventListener('click', e => {
+    // 使用事件委托减少事件监听器数量
+    el.addEventListener('click', function(e) {
+        const target = e.target
+        const card = target.closest('.post')
+        
+        if (target.classList.contains('edit-post')) {
+            e.stopPropagation()
+            const id = +target.dataset.id
+            const post = getPosts().find(p => p.id === id)
+            openEditor({ mode: 'edit', post })
+        } else if (target.classList.contains('del-post')) {
+            e.stopPropagation()
+            const id = +target.dataset.id
+            deletePost(id)
+        } else if (card) {
         const id = card.dataset.id
         location.hash = 'post-' + id
-    }))
-
-    document.querySelectorAll('#posts .edit-post').forEach(b => b.addEventListener('click', e => {
-        e.stopPropagation()
-        const id = +e.currentTarget.dataset.id
-        const post = getPosts().find(p => p.id === id)
-        openEditor({ mode: 'edit', post })
-    }))
-    
-    document.querySelectorAll('#posts .del-post').forEach(b => b.addEventListener('click', e => {
-        e.stopPropagation()
-        const id = +e.currentTarget.dataset.id
-        deletePost(id)
-    }))
+        }
+    })
 }
 
 function renderBoard(root) {
@@ -453,7 +629,11 @@ function renderBoard(root) {
 function loadMessages() {
     const msgs = JSON.parse(localStorage.getItem('myblog_msgs') || '[]')
     const box = document.getElementById('messages')
-    box.innerHTML = msgs.map((m, idx) => `<div class="message">
+    
+    // 使用 DocumentFragment 优化 DOM 操作
+    const fragment = document.createDocumentFragment()
+    const tempDiv = document.createElement('div')
+    tempDiv.innerHTML = msgs.map((m, idx) => `<div class="message">
         <div>
             <strong>${escapeHtml(m.nick || '访客')}</strong> 
             <small>${new Date(m.t).toLocaleString()}</small> 
@@ -461,11 +641,21 @@ function loadMessages() {
         </div>
         <div>${escapeHtml(m.text)}</div>
     </div>`).join('')
+    
+    while (tempDiv.firstChild) {
+        fragment.appendChild(tempDiv.firstChild)
+    }
+    
+    box.innerHTML = ''
+    box.appendChild(fragment)
 
-    box.querySelectorAll('.del-btn').forEach(btn => btn.addEventListener('click', e => {
-        const idx = +e.currentTarget.dataset.idx
+    // 使用事件委托
+    box.addEventListener('click', function(e) {
+        if (e.target.classList.contains('del-btn')) {
+            const idx = +e.target.dataset.idx
         tryDelete(idx)
-    }))
+        }
+    })
 }
 
 function postMessage() {
@@ -473,14 +663,23 @@ function postMessage() {
     const nick = nickRaw || '访客'
     const pwd = document.getElementById('pwd').value || ''
     const text = document.getElementById('msg').value.trim()
-    if (!text) return alert('请输入内容')
+    if (!text) {
+        customAlert('请输入内容')
+        return
+    }
 
     const msgs = JSON.parse(localStorage.getItem('myblog_msgs') || '[]')
 
     if (nick !== '访客') {
         const exists = msgs.some(m => (m.nick || '').toLowerCase() === nick.toLowerCase())
-        if (exists) return alert('昵称已存在，请换一个昵称')
-        if (!pwd.trim()) return alert('请输入密码用于将来删除留言')
+        if (exists) {
+            customAlert('昵称已存在，请换一个昵称')
+            return
+        }
+        if (!pwd.trim()) {
+            customAlert('请输入密码用于将来删除留言')
+            return
+        }
     }
 
     msgs.unshift({ nick, text, t: Date.now(), pwd: pwd })
@@ -490,19 +689,23 @@ function postMessage() {
     loadMessages()
 }
 
-function tryDelete(idx) {
+async function tryDelete(idx) {
     const msgs = JSON.parse(localStorage.getItem('myblog_msgs') || '[]')
     const m = msgs[idx]
-    if (!m) return alert('留言不存在')
-    const input = prompt('请输入删除密码：')
+    if (!m) {
+        await customAlert('留言不存在')
+        return
+    }
+    const input = await customPrompt('请输入删除密码：', '', '输入密码', 'password', '删除留言')
     if (input === null) return
     if (input === MASTER || (m.pwd && input === m.pwd)) {
         msgs.splice(idx, 1)
         localStorage.setItem('myblog_msgs', JSON.stringify(msgs))
         loadMessages()
-        return alert('删除成功')
+        await customAlert('删除成功', '成功')
+        return
     }
-    alert('密码错误，无法删除')
+    await customAlert('密码错误，无法删除', '错误')
 }
 
 function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
@@ -555,13 +758,17 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
 
     modal.querySelector('#ed-open-full').addEventListener('click', async () => {
         const provided = pwd.value || ''
-        if (provided !== MASTER) return alert('密码错误：需要主密码以发布/编辑文章')
+        if (provided !== MASTER) {
+            await customAlert('密码错误：需要主密码以发布/编辑文章', '密码错误')
+            return
+        }
         
         const useRemote = remoteCheckbox.checked
         const tokenVal = token.value.trim()
         
         if (useRemote && !tokenVal) {
-            return alert('要同步到 GitHub，请提供 Personal Access Token')
+            await customAlert('要同步到 GitHub，请提供 Personal Access Token', '提示')
+            return
         }
         
         if (mode === 'create') {
@@ -586,7 +793,7 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                     await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
                     coverUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${imagePath}`
                 } catch (err) {
-                    alert('封面上传失败：' + err.message)
+                    await customAlert('封面上传失败：' + err.message, '上传失败')
                     console.error(err)
                     return
                 }
@@ -609,7 +816,10 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
         } else {
             const posts = getPosts()
             const idx = posts.findIndex(p => p.id === post.id)
-            if (idx === -1) return alert('文章未找到')
+            if (idx === -1) {
+                await customAlert('文章未找到')
+                return
+            }
             
             let coverUrl = cover.value.trim()
             
@@ -631,7 +841,7 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                     await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
                     coverUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${imagePath}`
                 } catch (err) {
-                    alert('封面上传失败：' + err.message)
+                    await customAlert('封面上传失败：' + err.message, '上传失败')
                     console.error(err)
                     return
                 }
@@ -649,17 +859,21 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
 
     modal.querySelector('#ed-save').addEventListener('click', async () => {
         const provided = pwd.value || ''
-        if (provided !== MASTER) return alert('密码错误：需要主密码以发布/编辑文章')
+        if (provided !== MASTER) {
+            await customAlert('密码错误：需要主密码以发布/编辑文章', '密码错误')
+            return
+        }
         
         const useRemote = remoteCheckbox.checked
         const tokenVal = token.value.trim()
         
         if (useRemote && !tokenVal) {
-            return alert('要同步到 GitHub，请提供 Personal Access Token')
+            await customAlert('要同步到 GitHub，请提供 Personal Access Token', '提示')
+            return
         }
         
         const posts = getPosts()
-        
+
         if (mode === 'create') {
             const id = Date.now()
             let coverUrl = cover.value.trim()
@@ -679,10 +893,10 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                     const safeName = Date.now() + '_' + file.name.replace(/[^a-z0-9.\-]/ig, '_')
                     const imagePath = `${folder}/${safeName}`
                     
-                    await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
+                        await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
                     coverUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${imagePath}`
                 } catch (err) {
-                    alert('封面上传失败：' + err.message)
+                    await customAlert('封面上传失败：' + err.message, '上传失败')
                     console.error(err)
                     return
                 }
@@ -701,7 +915,10 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
             savePosts(posts)
         } else {
             const idx = posts.findIndex(p => p.id === post.id)
-            if (idx === -1) return alert('原文章未找到')
+            if (idx === -1) {
+                await customAlert('原文章未找到')
+                return
+            }
             
             const oldTitle = posts[idx].title
             const oldCategory = posts[idx].category
@@ -724,10 +941,10 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                     const safeName = Date.now() + '_' + file.name.replace(/[^a-z0-9.\-]/ig, '_')
                     const imagePath = `${folder}/${safeName}`
                     
-                    await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
+                        await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
                     coverUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${imagePath}`
                 } catch (err) {
-                    alert('封面上传失败：' + err.message)
+                    await customAlert('封面上传失败：' + err.message, '上传失败')
                     console.error(err)
                     return
                 }
@@ -744,7 +961,7 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
             const categoryChanged = oldCategory !== posts[idx].category
             
             if (oldRepoPath && (titleChanged || categoryChanged) && useRemote && tokenVal) {
-                const confirmUpdate = confirm('⚠️ 检测到标题或分类已更改\n\n是否同步更新 GitHub 上的文章？\n\n注意：旧文件会被删除，新文件会被创建')
+                const confirmUpdate = await customConfirm('⚠️ 检测到标题或分类已更改\n\n是否同步更新 GitHub 上的文章？\n\n注意：旧文件会被删除，新文件会被创建', '确认更新')
                 
                 if (confirmUpdate) {
                     try {
@@ -756,15 +973,15 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                             const res = await uploadFileToRepo(posts[idx], tokenVal)
                             posts[idx].repoSha = res.sha
                             posts[idx].repoPath = res.path
-                            alert('✅ GitHub 同步成功！\n\n旧文件已删除，新文件已创建\n路径：' + res.path)
+                            await customAlert('✅ GitHub 同步成功！\n\n旧文件已删除，新文件已创建\n路径：' + res.path, '同步成功')
                         } else {
                             // 清除 repoPath，因为旧文件已删除但新文件还没内容
                             posts[idx].repoPath = null
                             posts[idx].repoSha = null
-                            alert('✅ 旧文件已从 GitHub 删除\n\n💡 提示：编辑正文并保存后会创建新文件')
+                            await customAlert('✅ 旧文件已从 GitHub 删除\n\n💡 提示：编辑正文并保存后会创建新文件', '提示')
                         }
                     } catch (err) {
-                        alert('❌ GitHub 同步失败：' + err.message + '\n\n元数据已保存到本地')
+                        await customAlert('❌ GitHub 同步失败：' + err.message + '\n\n元数据已保存到本地', '同步失败')
                         console.error(err)
                     }
                 }
@@ -781,20 +998,26 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
 async function deletePost(id) {
     const posts = getPosts()
     const idx = posts.findIndex(p => p.id === id)
-    if (idx === -1) return alert('文章不存在')
+    if (idx === -1) {
+        await customAlert('文章不存在')
+        return
+    }
     
     const post = posts[idx]
     
     // 如果文章已同步到 GitHub，询问是否删除远程文件
     if (post.repoPath) {
-        const confirmDelete = confirm('⚠️ 此文章已同步到 GitHub\n\n确定要删除吗？（需要输入 Token 才能删除远程文件）')
+        const confirmDelete = await customConfirm('⚠️ 此文章已同步到 GitHub\n\n确定要删除吗？（需要输入 Token 才能删除远程文件）', '确认删除')
         if (!confirmDelete) return
         
-        const input = prompt('请输入主密码以删除文章：')
+        const input = await customPrompt('请输入主密码以删除文章：', '', '输入密码', 'password', '验证密码')
         if (input === null) return
-        if (input !== MASTER) return alert('密码错误')
+        if (input !== MASTER) {
+            await customAlert('密码错误', '错误')
+            return
+        }
         
-        const token = prompt('请输入 GitHub Token（删除远程文件）：\n\n如果不输入，将仅删除本地文章')
+        const token = await customPrompt('请输入 GitHub Token（删除远程文件）：\n\n如果不输入，将仅删除本地文章', '', 'GitHub Token (可选)', 'password', 'GitHub Token')
         
         if (token && token.trim()) {
             // 尝试从 GitHub 删除
@@ -802,30 +1025,33 @@ async function deletePost(id) {
                 await deleteFileFromRepo(post, token.trim())
                 posts.splice(idx, 1)
                 savePosts(posts)
-                alert('✅ 删除成功！\n\n已从本地和 GitHub 仓库中删除')
+                await customAlert('✅ 删除成功！\n\n已从本地和 GitHub 仓库中删除', '删除成功')
             } catch (e) {
-                const confirmLocal = confirm('❌ GitHub 删除失败：' + e.message + '\n\n是否仅删除本地文章？')
+                const confirmLocal = await customConfirm('❌ GitHub 删除失败：' + e.message + '\n\n是否仅删除本地文章？', 'GitHub 删除失败')
                 if (confirmLocal) {
                     posts.splice(idx, 1)
                     savePosts(posts)
-                    alert('✅ 已删除本地文章\n\n⚠️ GitHub 上的文件未删除')
+                    await customAlert('✅ 已删除本地文章\n\n⚠️ GitHub 上的文件未删除', '删除成功')
                 }
             }
         } else {
             // 仅删除本地
             posts.splice(idx, 1)
             savePosts(posts)
-            alert('✅ 已删除本地文章\n\n⚠️ GitHub 上的文件未删除')
+            await customAlert('✅ 已删除本地文章\n\n⚠️ GitHub 上的文件未删除', '删除成功')
         }
     } else {
         // 文章未同步，直接删除
-        const input = prompt('请输入主密码以删除文章：')
+        const input = await customPrompt('请输入主密码以删除文章：', '', '输入密码', 'password', '验证密码')
         if (input === null) return
-        if (input !== MASTER) return alert('密码错误')
+        if (input !== MASTER) {
+            await customAlert('密码错误', '错误')
+            return
+        }
         
         posts.splice(idx, 1)
         savePosts(posts)
-        alert('✅ 删除成功！')
+        await customAlert('✅ 删除成功！', '删除成功')
     }
     
     router()
@@ -851,6 +1077,13 @@ function goBack() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    // 注册 Service Worker
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('Service Worker registered:', reg.scope))
+            .catch(err => console.warn('Service Worker registration failed:', err))
+    }
+    
     document.getElementById('langBtn').addEventListener('click', () => {
         currentLang = currentLang === 'zh' ? 'en' : 'zh'
         document.getElementById('langBtn').innerText = currentLang === 'zh' ? 'EN' : '中文'
