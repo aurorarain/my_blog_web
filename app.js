@@ -1,5 +1,5 @@
 // 配置区
-const APP_VERSION = '1.0.9' // 版本号，更新后会清除旧缓存
+const APP_VERSION = '1.1.0' // 版本号，更新后会清除旧缓存
 const BG_IMAGE = 'background.png'
 const USER_PHOTO = 'my_photo.png'
 const USER_NAME_ZH = '嵇志豪'
@@ -224,10 +224,7 @@ function setBackground() {
 
 // 数据存储
 const MASTER = 'jzh0128'
-const sampleArticles = [
-    { id: 1, type: 'article', title: '示例文章 A', desc: '文章简介示例。', cover: '', content: '<h1>示例文章 A</h1><p>这是文章的内容示例。</p>', category: '随笔' },
-    { id: 2, type: 'article', title: '示例文章 B', desc: '另一篇示例文章。', cover: '', content: '<h1>示例文章 B</h1><p>内容示例...</p>', category: '编程技术' }
-]
+const sampleArticles = [] // 移除示例文章，避免占位图片加载失败
 
 // 同步状态
 let isSyncing = false
@@ -1061,9 +1058,11 @@ function renderPage(page) {
 function renderHome(root) {
     const name = currentLang === 'zh' ? USER_NAME_ZH : USER_NAME_EN
     const bio = currentLang === 'zh' ? USER_BIO_ZH : USER_BIO_EN
+    const avatarUrl = USER_PHOTO || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23e0e0e0" width="400" height="400"/%3E%3Ctext fill="%23999" font-family="sans-serif" font-size="24" dy="10.5" font-weight="bold" x="50%25" y="50%25" text-anchor="middle"%3E头像%3C/text%3E%3C/svg%3E'
+    
     root.innerHTML = `
         <section class="card home-grid">
-            <img class="avatar" src="${USER_PHOTO || 'https://via.placeholder.com/400x400?text=Photo'}" alt="avatar">
+            <img class="avatar" src="${avatarUrl}" alt="avatar" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'400\\' height=\\'400\\'%3E%3Crect fill=\\'%23e0e0e0\\' width=\\'400\\' height=\\'400\\'/%3E%3Ctext fill=\\'%23999\\' font-family=\\'sans-serif\\' font-size=\\'24\\' dy=\\'10.5\\' font-weight=\\'bold\\' x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\'%3E头像%3C/text%3E%3C/svg%3E'">
             <div>
                 <h2>${name}</h2>
                 <p>${bio}</p>
@@ -1133,17 +1132,22 @@ function renderPostsForCategory(cat) {
     // 使用 DocumentFragment 减少 DOM 重绘
     const fragment = document.createDocumentFragment()
     const tempDiv = document.createElement('div')
-    tempDiv.innerHTML = posts.map(p => `<div class="post card" data-id="${p.id}">
-        <img src="${p.cover || 'https://via.placeholder.com/320x180'}" alt="${escapeHtml(p.title)}" loading="lazy" onload="this.classList.add('loaded')">
-        <div>
-            <h4 class="post-title">${escapeHtml(p.title)}</h4>
-            <p class="post-desc">${escapeHtml(p.desc)}</p>
-        </div>
-        <div style="margin-left:auto">
-            <button class="edit-post" data-id="${p.id}">${t('post.edit')}</button>
-            <button class="del-post" data-id="${p.id}">${t('post.delete')}</button>
-        </div>
-    </div>`).join('')
+    tempDiv.innerHTML = posts.map(p => {
+        // 使用默认封面或自定义封面
+        const coverUrl = p.cover || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="320" height="180"%3E%3Crect fill="%23f0f0f0" width="320" height="180"/%3E%3Ctext fill="%23999" font-family="sans-serif" font-size="16" dy="10.5" font-weight="bold" x="50%25" y="50%25" text-anchor="middle"%3E暂无封面%3C/text%3E%3C/svg%3E'
+        
+        return `<div class="post card" data-id="${p.id}">
+            <img src="${coverUrl}" alt="${escapeHtml(p.title)}" loading="lazy" onload="this.classList.add('loaded')" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'320\\' height=\\'180\\'%3E%3Crect fill=\\'%23f0f0f0\\' width=\\'320\\' height=\\'180\\'/%3E%3Ctext fill=\\'%23999\\' font-family=\\'sans-serif\\' font-size=\\'16\\' dy=\\'10.5\\' font-weight=\\'bold\\' x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\'%3E加载失败%3C/text%3E%3C/svg%3E'">
+            <div>
+                <h4 class="post-title">${escapeHtml(p.title)}</h4>
+                <p class="post-desc">${escapeHtml(p.desc)}</p>
+            </div>
+            <div style="margin-left:auto">
+                <button class="edit-post" data-id="${p.id}">${t('post.edit')}</button>
+                <button class="del-post" data-id="${p.id}">${t('post.delete')}</button>
+            </div>
+        </div>`
+    }).join('')
 
     while (tempDiv.firstChild) {
         fragment.appendChild(tempDiv.firstChild)
