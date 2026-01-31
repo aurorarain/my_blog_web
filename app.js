@@ -1,5 +1,5 @@
 // 配置区
-const APP_VERSION = '1.0.5' // 版本号，更新后会清除旧缓存
+const APP_VERSION = '1.0.7' // 版本号，更新后会清除旧缓存
 const BG_IMAGE = 'background.png'
 const USER_PHOTO = 'my_photo.png'
 const USER_NAME_ZH = '嵇志豪'
@@ -11,10 +11,13 @@ const USER_CONTACT = [
     { type: 'GitHub', value: 'https://github.com/aurorarain' }
 ]
 
-// JSONBin.io 云数据库配置（免费、跨设备、实时同步）
-const JSONBIN_BIN_ID = '697dbb0eae596e708f05e9f2' // 您的 Bin ID（首次运行会自动创建）
-const JSONBIN_API_KEY = '$2a$10$ufvYDpE1nsABcD6aBtTy6u5SX4lnvS/KY3.8KOWLMt6m6diInkIg.' // 您的 API Key
-const JSONBIN_API_BASE = 'https://api.jsonbin.io/v3'
+// ==================== Supabase 数据存储配置（必需配置）====================
+// 用途：存储文章元数据、留言数据，实现跨设备同步
+// 注册地址：https://supabase.com/
+// 永久免费：500MB 数据库 + 1GB 文件存储 + 50,000 月活用户
+const SUPABASE_URL = 'https://ncpzijtvomuhrbiypqaq.supabase.co' // 您的项目 URL
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jcHppanR2b211aHJiaXlwcWFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk4NDU2MTUsImV4cCI6MjA4NTQyMTYxNX0.ouQAv0w54xUo87Ko3mzs3Tknk8Ze8X9aH-KRLSqcquI' // 您的 anon public key
+const SUPABASE_TABLE_NAME = 'blog_data' // 数据表名
 
 // GitHub 文章内容存储配置（仅用于存储文章 HTML 和图片）
 const DATA_REPO_OWNER = 'aurorarain'
@@ -231,6 +234,7 @@ let isSyncing = false
 let lastSyncTime = 0
 let syncInterval = null
 const SYNC_TIMEOUT = 10000 // 同步超时时间：10秒
+let dataRecordId = null // Supabase 数据记录 ID
 
 // 获取 GitHub Token（仅用于文章内容存储）
 function getGitHubToken() {
@@ -246,18 +250,20 @@ function setGitHubToken(token) {
     }
 }
 
-// ==================== JSONBin 云数据库同步 ====================
+// ==================== Supabase 数据存储同步 ====================
 
-// 从 JSONBin 读取数据（带超时控制）
+// 从 Supabase 读取数据（带超时控制）
 async function pullDataFromCloud() {
     try {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), SYNC_TIMEOUT)
         
-        const url = `${JSONBIN_API_BASE}/b/${JSONBIN_BIN_ID}/latest`
+        // 查询数据（获取第一条记录，按更新时间倒序）
+        const url = `${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE_NAME}?select=*&order=updated_at.desc&limit=1`
         const headers = {
-            'X-Master-Key': JSONBIN_API_KEY,
-            'X-Bin-Meta': 'false'
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json'
         }
         
         const res = await fetch(url, { 
@@ -269,16 +275,20 @@ async function pullDataFromCloud() {
         clearTimeout(timeoutId)
         
         if (!res.ok) {
-            if (res.status === 404) {
-                console.log('Bin not found, will create on first push')
-                return null
-            }
             throw new Error('Failed to fetch data: ' + res.status)
         }
         
-        const data = await res.json()
+        const result = await res.json()
         
-        // 优化：文章元数据不包含 content，减少 JSONBin 存储空间
+        if (!result || result.length === 0) {
+            console.log('No data found, will create on first push')
+            return null
+        }
+        
+        const data = result[0]
+        dataRecordId = data.id // 保存记录 ID 用于更新
+        
+        // 优化：文章元数据不包含 content，减少存储空间
         const posts = (data.posts || []).map(p => ({
             ...p,
             content: p.content || '' // 内容从 GitHub 加载
@@ -287,7 +297,7 @@ async function pullDataFromCloud() {
         return {
             posts: posts,
             messages: data.messages || [],
-            lastModified: data.lastModified || Date.now()
+            lastModified: data.last_modified || Date.now()
         }
     } catch (e) {
         if (e.name === 'AbortError') {
@@ -299,7 +309,7 @@ async function pullDataFromCloud() {
     }
 }
 
-// 推送数据到 JSONBin（带超时控制）
+// 推送数据到 Supabase（带超时控制）
 async function pushDataToCloud(posts, messages) {
     try {
         const controller = new AbortController()
@@ -330,18 +340,30 @@ async function pushDataToCloud(posts, messages) {
         const data = {
             posts: optimizedPosts,
             messages: messages,
-            lastModified: Date.now(),
+            last_modified: Date.now(),
             version: APP_VERSION
         }
         
-        const url = `${JSONBIN_API_BASE}/b/${JSONBIN_BIN_ID}`
         const headers = {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
             'Content-Type': 'application/json',
-            'X-Master-Key': JSONBIN_API_KEY
+            'Prefer': 'return=representation'
+        }
+        
+        let url, method
+        if (dataRecordId) {
+            // 更新现有数据
+            url = `${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE_NAME}?id=eq.${dataRecordId}`
+            method = 'PATCH'
+        } else {
+            // 创建新数据
+            url = `${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE_NAME}`
+            method = 'POST'
         }
         
         const res = await fetch(url, {
-            method: 'PUT',
+            method: method,
             headers: headers,
             body: JSON.stringify(data),
             signal: controller.signal
@@ -350,7 +372,14 @@ async function pushDataToCloud(posts, messages) {
         clearTimeout(timeoutId)
         
         if (!res.ok) {
-            throw new Error('Push failed: ' + res.status)
+            const errorText = await res.text()
+            throw new Error('Push failed: ' + res.status + ' ' + errorText)
+        }
+        
+        const result = await res.json()
+        if (!dataRecordId && result && result.length > 0 && result[0].id) {
+            dataRecordId = result[0].id // 保存新创建的记录 ID
+            localStorage.setItem('supabase_record_id', dataRecordId)
         }
         
         localStorage.setItem('last_sync_time', Date.now().toString())
@@ -1668,6 +1697,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ==================== 页面加载时自动从云端同步数据 ====================
+    // 恢复保存的记录 ID
+    const savedRecordId = localStorage.getItem('supabase_record_id')
+    if (savedRecordId) {
+        dataRecordId = savedRecordId
+    }
+    
     console.log('📡 正在从云端同步数据...')
     syncData(false).then(() => {
         console.log('✅ 数据同步成功')
@@ -1770,11 +1805,7 @@ document.addEventListener('DOMContentLoaded', () => {
             version: APP_VERSION
         }
         
-        const blob = new Blob([JSON.stringify(data)], { type: 'application/json' })
-        const url = `${JSONBIN_API_BASE}/b/${JSONBIN_BIN_ID}`
-        
-        // 使用 sendBeacon 确保数据发送
-        navigator.sendBeacon(url, blob)
+        // Supabase 不支持 sendBeacon，跳过
     })
 
     // 语言切换按钮

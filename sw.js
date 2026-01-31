@@ -1,5 +1,5 @@
 // Service Worker for caching static assets
-const CACHE_VERSION = '1.0.5'
+const CACHE_VERSION = '1.0.7'
 const CACHE_NAME = 'myblog-v' + CACHE_VERSION
 const STATIC_CACHE = [
     './styles.css',
@@ -63,7 +63,7 @@ self.addEventListener('fetch', event => {
     }
 
     // Skip API requests
-    if (url.pathname.includes('/api/') || url.hostname.includes('jsonbin.io') || url.hostname.includes('github')) {
+    if (url.pathname.includes('/api/') || url.hostname.includes('supabase.co') || url.hostname.includes('github')) {
         return
     }
 
