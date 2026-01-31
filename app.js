@@ -1,5 +1,5 @@
 // 配置区
-const APP_VERSION = '1.0.8' // 版本号，更新后会清除旧缓存
+const APP_VERSION = '1.0.9' // 版本号，更新后会清除旧缓存
 const BG_IMAGE = 'background.png'
 const USER_PHOTO = 'my_photo.png'
 const USER_NAME_ZH = '嵇志豪'
@@ -935,19 +935,44 @@ async function renderEditPage(id) {
             return
         }
 
+        // 保存删除前的数据（用于回滚）
+        const deletedPost = posts[idx]
+
         // 如果文章已同步到 GitHub 且提供了 Token，则从远程删除
         if (post.repoPath && token) {
             try {
                 await deleteFileFromRepo(posts[idx], token)
                 posts.splice(idx, 1)
                 savePosts(posts)
-                await customAlert('✅ 删除成功！\n\n已从本地和 GitHub 仓库中删除', '删除成功')
+                
+                // 同步到云端
+                try {
+                    await syncData(false)
+                    showNotification('✅ 文章删除成功！', 'success')
+                    location.hash = 'categories'
+                } catch (syncErr) {
+                    // 云端同步失败，回滚
+                    posts.splice(idx, 0, deletedPost)
+                    savePosts(posts)
+                    await customAlert('❌ 云端同步失败：' + syncErr.message + '\n\n文章删除已回滚', '同步失败')
+                }
             } catch (e) {
                 const confirmLocal = await customConfirm('❌ GitHub 删除失败：' + e.message + '\n\n是否仅删除本地文章？', 'GitHub 删除失败')
                 if (confirmLocal) {
                     posts.splice(idx, 1)
                     savePosts(posts)
-                    await customAlert('✅ 已删除本地文章\n\n⚠️ GitHub 上的文件未删除', '删除成功')
+                    
+                    // 同步到云端
+                    try {
+                        await syncData(false)
+                        showNotification('✅ 本地文章删除成功！', 'success')
+                        location.hash = 'categories'
+                    } catch (syncErr) {
+                        // 云端同步失败，回滚
+                        posts.splice(idx, 0, deletedPost)
+                        savePosts(posts)
+                        await customAlert('❌ 云端同步失败：' + syncErr.message + '\n\n文章删除已回滚', '同步失败')
+                    }
                 } else {
                     return
                 }
@@ -955,10 +980,19 @@ async function renderEditPage(id) {
         } else {
             posts.splice(idx, 1)
             savePosts(posts)
-            await customAlert('✅ 删除成功！', '删除成功')
+            
+            // 同步到云端
+            try {
+                await syncData(false)
+                showNotification('✅ 文章删除成功！', 'success')
+                location.hash = 'categories'
+            } catch (e) {
+                // 云端同步失败，回滚
+                posts.splice(idx, 0, deletedPost)
+                savePosts(posts)
+                await customAlert('❌ 文章删除失败：' + e.message + '\n\n请检查网络连接后重试', '删除失败')
+            }
         }
-
-        location.hash = 'categories'
     })
 }
 
@@ -1619,6 +1653,9 @@ async function deletePost(id) {
     }
 
     const post = posts[idx]
+    
+    // 保存删除前的数据（用于回滚）
+    const deletedPost = posts[idx]
 
     // 如果文章已同步到 GitHub，询问是否删除远程文件
     if (post.repoPath) {
@@ -1640,20 +1677,53 @@ async function deletePost(id) {
                 await deleteFileFromRepo(post, token.trim())
                 posts.splice(idx, 1)
                 savePosts(posts)
-                await customAlert('✅ 删除成功！\n\n已从本地和 GitHub 仓库中删除', '删除成功')
+                
+                // 同步到云端
+                try {
+                    await syncData(false)
+                    showNotification('✅ 文章删除成功！', 'success')
+                    router()
+                } catch (syncErr) {
+                    // 云端同步失败，回滚
+                    posts.splice(idx, 0, deletedPost)
+                    savePosts(posts)
+                    await customAlert('❌ 云端同步失败：' + syncErr.message + '\n\n文章删除已回滚', '同步失败')
+                }
             } catch (e) {
                 const confirmLocal = await customConfirm('❌ GitHub 删除失败：' + e.message + '\n\n是否仅删除本地文章？', 'GitHub 删除失败')
                 if (confirmLocal) {
                     posts.splice(idx, 1)
                     savePosts(posts)
-                    await customAlert('✅ 已删除本地文章\n\n⚠️ GitHub 上的文件未删除', '删除成功')
+                    
+                    // 同步到云端
+                    try {
+                        await syncData(false)
+                        showNotification('✅ 本地文章删除成功！', 'success')
+                        router()
+                    } catch (syncErr) {
+                        // 云端同步失败，回滚
+                        posts.splice(idx, 0, deletedPost)
+                        savePosts(posts)
+                        await customAlert('❌ 云端同步失败：' + syncErr.message + '\n\n文章删除已回滚', '同步失败')
+                    }
                 }
             }
         } else {
             // 仅删除本地
             posts.splice(idx, 1)
             savePosts(posts)
-            await customAlert('✅ 已删除本地文章\n\n⚠️ GitHub 上的文件未删除', '删除成功')
+            
+            // 同步到云端
+            try {
+                await syncData(false)
+                showNotification('✅ 本地文章删除成功！', 'success')
+                router()
+            } catch (e) {
+                // 云端同步失败，回滚
+                posts.splice(idx, 0, deletedPost)
+                savePosts(posts)
+                await customAlert('❌ 文章删除失败：' + e.message + '\n\n请检查网络连接后重试', '删除失败')
+            }
         }
     } else {
         // 文章未同步，直接删除
@@ -1666,10 +1736,19 @@ async function deletePost(id) {
 
         posts.splice(idx, 1)
         savePosts(posts)
-        await customAlert('✅ 删除成功！', '删除成功')
+        
+        // 同步到云端
+        try {
+            await syncData(false)
+            showNotification('✅ 文章删除成功！', 'success')
+            router()
+        } catch (e) {
+            // 云端同步失败，回滚
+            posts.splice(idx, 0, deletedPost)
+            savePosts(posts)
+            await customAlert('❌ 文章删除失败：' + e.message + '\n\n请检查网络连接后重试', '删除失败')
+        }
     }
-
-    router()
 }
 
 // 已移除 GitHub 同步设置（改用 JSONBin 云数据库）
