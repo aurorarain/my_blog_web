@@ -1,5 +1,5 @@
 // 配置区
-const APP_VERSION = '1.0.4' // 版本号，更新后会清除旧缓存
+const APP_VERSION = '1.0.5' // 版本号，更新后会清除旧缓存
 const BG_IMAGE = 'background.png'
 const USER_PHOTO = 'my_photo.png'
 const USER_NAME_ZH = '嵇志豪'
@@ -230,6 +230,7 @@ const sampleArticles = [
 let isSyncing = false
 let lastSyncTime = 0
 let syncInterval = null
+const SYNC_TIMEOUT = 10000 // 同步超时时间：10秒
 
 // 获取 GitHub Token（仅用于文章内容存储）
 function getGitHubToken() {
@@ -247,9 +248,12 @@ function setGitHubToken(token) {
 
 // ==================== JSONBin 云数据库同步 ====================
 
-// 从 JSONBin 读取数据
+// 从 JSONBin 读取数据（带超时控制）
 async function pullDataFromCloud() {
     try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), SYNC_TIMEOUT)
+        
         const url = `${JSONBIN_API_BASE}/b/${JSONBIN_BIN_ID}/latest`
         const headers = {
             'X-Master-Key': JSONBIN_API_KEY,
@@ -258,8 +262,11 @@ async function pullDataFromCloud() {
         
         const res = await fetch(url, { 
             headers,
-            cache: 'no-store' // 强制不使用缓存
+            cache: 'no-store',
+            signal: controller.signal
         })
+        
+        clearTimeout(timeoutId)
         
         if (!res.ok) {
             if (res.status === 404) {
@@ -283,14 +290,21 @@ async function pullDataFromCloud() {
             lastModified: data.lastModified || Date.now()
         }
     } catch (e) {
+        if (e.name === 'AbortError') {
+            console.error('Pull data timeout')
+            throw new Error('同步超时，请检查网络连接')
+        }
         console.error('Pull data error:', e)
-        return null
+        throw e
     }
 }
 
-// 推送数据到 JSONBin
+// 推送数据到 JSONBin（带超时控制）
 async function pushDataToCloud(posts, messages) {
     try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), SYNC_TIMEOUT)
+        
         // 优化：只存储文章元数据，不存储完整内容（节省空间）
         const optimizedPosts = posts.map(p => {
             const meta = {
@@ -329,8 +343,11 @@ async function pushDataToCloud(posts, messages) {
         const res = await fetch(url, {
             method: 'PUT',
             headers: headers,
-            body: JSON.stringify(data)
+            body: JSON.stringify(data),
+            signal: controller.signal
         })
+        
+        clearTimeout(timeoutId)
         
         if (!res.ok) {
             throw new Error('Push failed: ' + res.status)
@@ -339,8 +356,12 @@ async function pushDataToCloud(posts, messages) {
         localStorage.setItem('last_sync_time', Date.now().toString())
         return true
     } catch (e) {
+        if (e.name === 'AbortError') {
+            console.error('Push data timeout')
+            throw new Error('同步超时，请检查网络连接')
+        }
         console.error('Push data error:', e)
-        return false
+        throw e
     }
 }
 
@@ -348,16 +369,12 @@ async function pushDataToCloud(posts, messages) {
 async function syncData(showNotification = false) {
     if (isSyncing) {
         console.log('Sync already in progress')
-        return false
+        throw new Error('同步正在进行中，请稍候')
     }
     
     isSyncing = true
     
     try {
-        if (showNotification) {
-            showSyncStatus('正在同步数据...', 'info')
-        }
-        
         // 拉取云端数据
         const remoteData = await pullDataFromCloud()
         
@@ -406,33 +423,23 @@ async function syncData(showNotification = false) {
             if (needPush) {
                 await pushDataToCloud(finalPosts, finalMessages)
             }
-            
-            if (showNotification) {
-                showSyncStatus('✅ 数据同步成功！', 'success')
-            }
         } else {
             // 远程没有数据，直接推送本地数据
-            const success = await pushDataToCloud(finalPosts, finalMessages)
-            if (success && showNotification) {
-                showSyncStatus('✅ 数据已上传到云端！', 'success')
-            }
+            await pushDataToCloud(finalPosts, finalMessages)
         }
         
         lastSyncTime = Date.now()
         return true
     } catch (e) {
         console.error('Sync error:', e)
-        if (showNotification) {
-            showSyncStatus('❌ 同步失败：' + e.message, 'error')
-        }
-        return false
+        throw e
     } finally {
         isSyncing = false
     }
 }
 
-// 显示同步状态提示
-function showSyncStatus(message, type = 'info') {
+// 显示通知（简化版）
+function showNotification(message, type = 'info') {
     const existing = document.getElementById('sync-status')
     if (existing) existing.remove()
     
@@ -452,6 +459,8 @@ function showSyncStatus(message, type = 'info') {
     }, 3000)
 }
 
+
+
 function getPosts() {
     const raw = localStorage.getItem('myblog_posts')
     if (!raw) {
@@ -463,8 +472,6 @@ function getPosts() {
 
 function savePosts(posts) { 
     localStorage.setItem('myblog_posts', JSON.stringify(posts))
-    // 自动同步到云端（防抖）
-    debouncedSync()
 }
 
 function getMessages() {
@@ -474,14 +481,7 @@ function getMessages() {
 
 function saveMessages(messages) {
     localStorage.setItem('myblog_msgs', JSON.stringify(messages))
-    // 自动同步到云端（防抖）
-    debouncedSync()
 }
-
-// 防抖同步函数（自动同步到云端）
-const debouncedSync = debounce(() => {
-    syncData(false)
-}, 1000) // 1秒后自动同步
 
 const categories = ['随笔', '编程技术', '算法', '计算机知识', '英语', '数学']
 
@@ -768,11 +768,11 @@ async function renderEditPage(id) {
         if (post.content) {
             quill.root.innerHTML = post.content
         }
-    } catch (e) {
+        } catch (e) {
         console.error('Quill init failed', e)
         await customAlert('编辑器加载失败，请刷新页面重试')
         return
-    }
+        }
 
     if ((!post.content || post.content.trim() === '') && post.repoPath) {
         fetchRawFile(post.repoPath).then(txt => {
@@ -823,23 +823,35 @@ async function renderEditPage(id) {
                 
                 savePosts(posts)
                 
-                // 恢复 content 到内存（用于立即显示）
-                posts[idx].content = localContent
-                
-                await customAlert('✅ 保存并同步到 GitHub 成功！\n\n文章路径：' + res.path + '\n\n💡 文章内容已存储到 GitHub，元数据已同步到云端', '同步成功')
+                // 同步到云端
+                try {
+                    await syncData(false)
+                    // 恢复 content 到内存（用于立即显示）
+                    posts[idx].content = localContent
+                    showNotification('✅ 文章保存成功！', 'success')
+                    location.hash = 'post-' + id
+                } catch (syncErr) {
+                    // 云端同步失败，但 GitHub 已成功
+                    posts[idx].content = localContent
+                    await customAlert('⚠️ 文章已保存到 GitHub，但云端同步失败：' + syncErr.message + '\n\n其他设备可能无法立即看到更新', '部分成功')
+                    location.hash = 'post-' + id
+                }
             } catch (e) {
-                // 同步失败，保留本地内容
-                savePosts(posts)
-                await customAlert('❌ GitHub 同步失败：' + e.message + '\n\n文章已保存到本地（JSONBin）', '同步失败')
+                // GitHub 同步失败
+                await customAlert('❌ GitHub 同步失败：' + e.message + '\n\n请检查 Token 权限和网络连接', '同步失败')
                 console.error('GitHub sync error:', e)
             }
         } else {
-            // 没有 Token，保存到本地
+            // 没有 Token，保存到本地并同步到云端
             savePosts(posts)
-            await customAlert('✅ 保存成功！\n\n💡 提示：输入 GitHub Token 可将文章内容同步到 GitHub\n（节省 JSONBin 空间，支持更多文章）', '保存成功')
+            try {
+                await syncData(false)
+                showNotification('✅ 文章保存成功！', 'success')
+                location.hash = 'post-' + id
+            } catch (e) {
+                await customAlert('❌ 文章保存失败：' + e.message + '\n\n请检查网络连接后重试', '保存失败')
+            }
         }
-
-        location.hash = 'post-' + id
     })
 
     document.getElementById('cancel-md').addEventListener('click', () => {
@@ -877,8 +889,8 @@ async function renderEditPage(id) {
                     savePosts(posts)
                     await customAlert('✅ 已删除本地文章\n\n⚠️ GitHub 上的文件未删除', '删除成功')
                 } else {
-                    return
-                }
+                return
+            }
             }
         } else {
             posts.splice(idx, 1)
@@ -971,20 +983,10 @@ function renderHome(root) {
 }
 
 function renderCategories(root, selectedCat) {
-    const lastSync = localStorage.getItem('last_sync_time')
-    const syncTime = lastSync ? new Date(parseInt(lastSync)).toLocaleString('zh-CN', { 
-        month: '2-digit', 
-        day: '2-digit', 
-        hour: '2-digit', 
-        minute: '2-digit' 
-    }) : '从未同步'
-    
     root.innerHTML = `<section class="card">
         <div style="display:flex;justify-content:space-between;align-items:center">
             <h2>${t('categories.title')}</h2>
             <div style="display:flex;gap:8px;align-items:center">
-                <span style="font-size:12px;color:#666">🟢 云同步 | 最后: ${syncTime}</span>
-                <button id="syncBtn" style="padding:6px 12px;font-size:13px">🔄 同步</button>
                 <button id="addArticleBtn">${t('post.publish')}</button>
             </div>
         </div>
@@ -1004,7 +1006,7 @@ function renderCategories(root, selectedCat) {
         categoriesEl.addEventListener('click', function (e) {
             if (e.target.classList.contains('cat-btn')) {
                 const catKey = e.target.dataset.cat
-                location.hash = 'categories-' + encodeURIComponent(catKey)
+        location.hash = 'categories-' + encodeURIComponent(catKey)
             }
         })
     }
@@ -1012,14 +1014,6 @@ function renderCategories(root, selectedCat) {
     const addBtn = document.getElementById('addArticleBtn')
     if (addBtn) {
         addBtn.addEventListener('click', () => openEditor({ mode: 'create', type: 'article' }))
-    }
-    
-    const syncBtn = document.getElementById('syncBtn')
-    if (syncBtn) {
-        syncBtn.addEventListener('click', async () => {
-            await syncData(true)
-            router() // 刷新页面显示最新同步时间
-        })
     }
 
     if (selectedCat) renderPostsForCategory(selectedCat)
@@ -1079,8 +1073,8 @@ function renderPostsForCategory(cat) {
             const id = +target.dataset.id
             deletePost(id)
         } else if (card) {
-            const id = card.dataset.id
-            location.hash = 'post-' + id
+        const id = card.dataset.id
+        location.hash = 'post-' + id
         }
     }
 
@@ -1089,21 +1083,9 @@ function renderPostsForCategory(cat) {
 }
 
 function renderBoard(root) {
-    const lastSync = localStorage.getItem('last_sync_time')
-    const syncTime = lastSync ? new Date(parseInt(lastSync)).toLocaleString('zh-CN', { 
-        month: '2-digit', 
-        day: '2-digit', 
-        hour: '2-digit', 
-        minute: '2-digit' 
-    }) : '从未同步'
-    
     root.innerHTML = `<section class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
             <h2>${t('board.title')}</h2>
-            <div style="display:flex;gap:8px;align-items:center">
-                <span style="font-size:12px;color:#666">🟢 云同步 | 最后: ${syncTime}</span>
-                <button id="syncBtn" style="padding:6px 12px;font-size:13px">🔄 同步</button>
-            </div>
         </div>
         <div style="background:#f8f9fa;padding:16px;border-radius:8px;margin-bottom:16px;border-left:4px solid #0969da">
             <div style="font-size:18px;font-weight:600;margin-bottom:8px">${t('board.welcome')}</div>
@@ -1120,11 +1102,6 @@ function renderBoard(root) {
     </section>`
 
     document.getElementById('postBtn').addEventListener('click', postMessage)
-    document.getElementById('syncBtn').addEventListener('click', async () => {
-        await syncData(true)
-        loadMessages() // 重新加载留言
-        router() // 刷新页面显示最新同步时间
-    })
     loadMessages()
 }
 
@@ -1180,7 +1157,7 @@ function loadMessages() {
     const deleteHandler = function (e) {
         if (e.target.classList.contains('del-btn')) {
             const idx = +e.target.dataset.idx
-            tryDelete(idx)
+        tryDelete(idx)
         }
     }
 
@@ -1188,13 +1165,13 @@ function loadMessages() {
     box.addEventListener('click', deleteHandler)
 }
 
-function postMessage() {
+async function postMessage() {
     const nickRaw = document.getElementById('nick').value.trim()
     const nick = nickRaw || '访客'
     const pwd = document.getElementById('pwd').value || ''
     const text = document.getElementById('msg').value.trim()
     if (!text) {
-        customAlert('请输入内容')
+        await customAlert('请输入内容')
         return
     }
 
@@ -1203,23 +1180,31 @@ function postMessage() {
     if (nick !== '访客') {
         const exists = msgs.some(m => (m.nick || '').toLowerCase() === nick.toLowerCase())
         if (exists) {
-            customAlert('昵称已存在，请换一个昵称')
+            await customAlert('昵称已存在，请换一个昵称')
             return
         }
         if (!pwd.trim()) {
-            customAlert('请输入密码用于将来删除留言')
+            await customAlert('请输入密码用于将来删除留言')
             return
         }
     }
 
     msgs.unshift({ nick, text, t: Date.now(), pwd: pwd })
     saveMessages(msgs)
-    document.getElementById('msg').value = ''
-    document.getElementById('pwd').value = ''
-    loadMessages()
     
-    // 显示同步提示
-    showSyncStatus('正在同步留言到云端...', 'info')
+    // 同步到云端
+    try {
+        await syncData(false)
+        document.getElementById('msg').value = ''
+        document.getElementById('pwd').value = ''
+        loadMessages()
+        showNotification('✅ 留言发布成功！', 'success')
+    } catch (e) {
+        // 同步失败，回滚
+        msgs.shift()
+        saveMessages(msgs)
+        await customAlert('❌ 留言发布失败：' + e.message + '\n\n请检查网络连接后重试', '发布失败')
+    }
 }
 
 async function tryDelete(idx) {
@@ -1232,13 +1217,21 @@ async function tryDelete(idx) {
     const input = await customPrompt('请输入删除密码：', '', '输入密码', 'password', '删除留言')
     if (input === null) return
     if (input === MASTER || (m.pwd && input === m.pwd)) {
-        msgs.splice(idx, 1)
+        const deletedMsg = msgs.splice(idx, 1)[0]
         saveMessages(msgs)
-        loadMessages()
-        await customAlert('删除成功', '成功')
         
-        // 显示同步提示
-        showSyncStatus('正在同步到云端...', 'info')
+        // 同步到云端
+        try {
+            await syncData(false)
+            loadMessages()
+            showNotification('✅ 留言删除成功！', 'success')
+        } catch (e) {
+            // 同步失败，回滚
+            msgs.splice(idx, 0, deletedMsg)
+            saveMessages(msgs)
+            loadMessages()
+            await customAlert('❌ 留言删除失败：' + e.message + '\n\n请检查网络连接后重试', '删除失败')
+        }
         return
     }
     await customAlert('密码错误，无法删除', '错误')
@@ -1447,14 +1440,14 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                     const safeName = Date.now() + '_' + file.name.replace(/[^a-z0-9.\-]/ig, '_')
                     const imagePath = `${folder}/${safeName}`
 
-                    await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
+                        await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
                     coverUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${imagePath}`
                 } catch (err) {
                     await customAlert('封面上传失败：' + err.message, '上传失败')
                     console.error(err)
                     return
                 }
-            }
+                    }
 
             const newPost = {
                 id,
@@ -1495,7 +1488,7 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                     const safeName = Date.now() + '_' + file.name.replace(/[^a-z0-9.\-]/ig, '_')
                     const imagePath = `${folder}/${safeName}`
 
-                    await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
+                        await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
                     coverUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${imagePath}`
                 } catch (err) {
                     await customAlert('封面上传失败：' + err.message, '上传失败')
@@ -1525,7 +1518,7 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
 
                             // 上传新文件（如果有内容）
                             if (posts[idx].content) {
-                                const res = await uploadFileToRepo(posts[idx], tokenVal)
+                    const res = await uploadFileToRepo(posts[idx], tokenVal)
                                 posts[idx].repoSha = res.sha
                                 posts[idx].repoPath = res.path
                                 await customAlert('✅ GitHub 同步成功！\n\n旧文件已删除，新文件已创建\n路径：' + res.path, '同步成功')
@@ -1595,7 +1588,7 @@ async function deletePost(id) {
                     savePosts(posts)
                     await customAlert('✅ 已删除本地文章\n\n⚠️ GitHub 上的文件未删除', '删除成功')
                 }
-            }
+    }
         } else {
             // 仅删除本地
             posts.splice(idx, 1)
@@ -1676,14 +1669,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ==================== 页面加载时自动从云端同步数据 ====================
     console.log('📡 正在从云端同步数据...')
-    syncData(false).then(success => {
-        if (success) {
-            console.log('✅ 数据同步成功')
-            router() // 刷新页面显示最新数据
-        } else {
-            console.log('⚠️ 数据同步失败，使用本地数据')
-            router()
-        }
+    syncData(false).then(() => {
+        console.log('✅ 数据同步成功')
+        router() // 刷新页面显示最新数据
+    }).catch(e => {
+        console.log('⚠️ 数据同步失败，使用本地数据:', e.message)
+        router()
     })
 
     // ==================== 注册 Service Worker（自动更新机制）====================
@@ -1733,11 +1724,13 @@ document.addEventListener('DOMContentLoaded', () => {
         })
     }
 
-    // ==================== 定期自动同步（每2分钟）====================
+    // ==================== 定期自动同步（每5分钟）====================
     syncInterval = setInterval(() => {
         console.log('⏰ 定期自动同步...')
-        syncData(false)
-    }, 120000) // 2分钟
+        syncData(false).catch(e => {
+            console.log('⚠️ 定期同步失败:', e.message)
+        })
+    }, 300000) // 5分钟
 
     // ==================== 页面可见性变化时同步 ====================
     document.addEventListener('visibilitychange', () => {
@@ -1754,6 +1747,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // 同步数据
             syncData(false).then(() => {
                 router() // 刷新页面显示最新数据
+            }).catch(e => {
+                console.log('⚠️ 页面切换同步失败:', e.message)
             })
         }
     })
@@ -1786,14 +1781,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const langBtn = document.getElementById('langBtn')
     if (langBtn) {
         langBtn.addEventListener('click', () => {
-            currentLang = currentLang === 'zh' ? 'en' : 'zh'
+        currentLang = currentLang === 'zh' ? 'en' : 'zh'
             langBtn.innerText = currentLang === 'zh' ? 'EN' : '中文'
-            router()
+        router()
             document.querySelectorAll('.nav-item').forEach(a => {
                 const k = a.dataset.key
                 a.innerText = t(k)
             })
-        })
+    })
     }
 
     // 初始化导航文本

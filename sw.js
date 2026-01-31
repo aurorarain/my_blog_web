@@ -1,5 +1,5 @@
 // Service Worker for caching static assets
-const CACHE_VERSION = '1.0.4'
+const CACHE_VERSION = '1.0.5'
 const CACHE_NAME = 'myblog-v' + CACHE_VERSION
 const STATIC_CACHE = [
     './styles.css',
