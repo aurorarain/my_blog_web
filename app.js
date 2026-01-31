@@ -1,5 +1,5 @@
 // 配置区
-const APP_VERSION = '1.0.7' // 版本号，更新后会清除旧缓存
+const APP_VERSION = '1.0.8' // 版本号，更新后会清除旧缓存
 const BG_IMAGE = 'background.png'
 const USER_PHOTO = 'my_photo.png'
 const USER_NAME_ZH = '嵇志豪'
@@ -252,19 +252,25 @@ function setGitHubToken(token) {
 
 // ==================== Supabase 数据存储同步 ====================
 
-// 从 Supabase 读取数据（带超时控制）
+// 从 Supabase 读取数据（带超时控制和详细错误日志）
 async function pullDataFromCloud() {
     try {
+        console.log('📥 开始拉取云端数据...')
+        console.log('Supabase URL:', SUPABASE_URL)
+        console.log('Table Name:', SUPABASE_TABLE_NAME)
+        
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), SYNC_TIMEOUT)
         
-        // 查询数据（获取第一条记录，按更新时间倒序）
-        const url = `${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE_NAME}?select=*&order=updated_at.desc&limit=1`
+        // 查询数据（获取第一条记录，按 ID 倒序）
+        const url = `${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE_NAME}?select=*&order=id.desc&limit=1`
         const headers = {
             'apikey': SUPABASE_ANON_KEY,
             'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
             'Content-Type': 'application/json'
         }
+        
+        console.log('请求 URL:', url)
         
         const res = await fetch(url, { 
             headers,
@@ -274,25 +280,34 @@ async function pullDataFromCloud() {
         
         clearTimeout(timeoutId)
         
+        console.log('响应状态:', res.status, res.statusText)
+        
         if (!res.ok) {
-            throw new Error('Failed to fetch data: ' + res.status)
+            const errorText = await res.text()
+            console.error('❌ 拉取失败:', errorText)
+            throw new Error(`拉取失败 (${res.status}): ${errorText}`)
         }
         
         const result = await res.json()
+        console.log('✅ 拉取成功，记录数:', result.length)
         
         if (!result || result.length === 0) {
-            console.log('No data found, will create on first push')
+            console.log('⚠️ 云端无数据，将在首次推送时创建')
             return null
         }
         
         const data = result[0]
         dataRecordId = data.id // 保存记录 ID 用于更新
+        localStorage.setItem('supabase_record_id', dataRecordId)
+        console.log('📌 记录 ID:', dataRecordId)
         
         // 优化：文章元数据不包含 content，减少存储空间
         const posts = (data.posts || []).map(p => ({
             ...p,
             content: p.content || '' // 内容从 GitHub 加载
         }))
+        
+        console.log('📄 文章数:', posts.length, '💬 留言数:', (data.messages || []).length)
         
         return {
             posts: posts,
@@ -301,20 +316,22 @@ async function pullDataFromCloud() {
         }
     } catch (e) {
         if (e.name === 'AbortError') {
-            console.error('Pull data timeout')
-            throw new Error('同步超时，请检查网络连接')
+            console.error('⏱️ 拉取超时')
+            throw new Error('同步超时（10秒），请检查网络连接')
         }
-        console.error('Pull data error:', e)
+        console.error('❌ 拉取错误:', e)
         throw e
     }
 }
 
-// 推送数据到 Supabase（带超时控制）
+// 推送数据到 Supabase（带超时控制和详细错误日志）
 async function pushDataToCloud(posts, messages) {
     try {
+        console.log('📤 开始推送数据到云端...')
+        
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), SYNC_TIMEOUT)
-        
+
         // 优化：只存储文章元数据，不存储完整内容（节省空间）
         const optimizedPosts = posts.map(p => {
             const meta = {
@@ -328,15 +345,15 @@ async function pushDataToCloud(posts, messages) {
                 repoSha: p.repoSha,
                 lastModified: p.lastModified || Date.now()
             }
-            
+
             // 如果文章没有 repoPath（未上传到 GitHub），则保留 content
             if (!p.repoPath && p.content) {
                 meta.content = p.content
             }
-            
+
             return meta
         })
-        
+
         const data = {
             posts: optimizedPosts,
             messages: messages,
@@ -344,52 +361,66 @@ async function pushDataToCloud(posts, messages) {
             version: APP_VERSION
         }
         
+        console.log('📊 数据统计 - 文章:', optimizedPosts.length, '留言:', messages.length)
+
         const headers = {
             'apikey': SUPABASE_ANON_KEY,
             'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
             'Content-Type': 'application/json',
             'Prefer': 'return=representation'
         }
-        
+
         let url, method
         if (dataRecordId) {
             // 更新现有数据
             url = `${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE_NAME}?id=eq.${dataRecordId}`
             method = 'PATCH'
+            console.log('🔄 更新现有记录 ID:', dataRecordId)
         } else {
             // 创建新数据
             url = `${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE_NAME}`
             method = 'POST'
+            console.log('➕ 创建新记录')
         }
         
+        console.log('请求方法:', method)
+        console.log('请求 URL:', url)
+
         const res = await fetch(url, {
             method: method,
             headers: headers,
             body: JSON.stringify(data),
             signal: controller.signal
         })
-        
+
         clearTimeout(timeoutId)
         
+        console.log('响应状态:', res.status, res.statusText)
+
         if (!res.ok) {
             const errorText = await res.text()
-            throw new Error('Push failed: ' + res.status + ' ' + errorText)
+            console.error('❌ 推送失败:', errorText)
+            throw new Error(`推送失败 (${res.status}): ${errorText}`)
         }
-        
+
         const result = await res.json()
+        console.log('✅ 推送成功，返回数据:', result)
+        
         if (!dataRecordId && result && result.length > 0 && result[0].id) {
             dataRecordId = result[0].id // 保存新创建的记录 ID
             localStorage.setItem('supabase_record_id', dataRecordId)
+            console.log('📌 保存新记录 ID:', dataRecordId)
         }
-        
+
         localStorage.setItem('last_sync_time', Date.now().toString())
+        console.log('✅ 同步完成！')
         return true
     } catch (e) {
         if (e.name === 'AbortError') {
-            console.error('Push data timeout')
-            throw new Error('同步超时，请检查网络连接')
+            console.error('⏱️ 推送超时')
+            throw new Error('同步超时（10秒），请检查网络连接')
         }
-        console.error('Push data error:', e)
+        console.error('❌ 推送错误:', e)
         throw e
     }
 }
@@ -400,28 +431,28 @@ async function syncData(showNotification = false) {
         console.log('Sync already in progress')
         throw new Error('同步正在进行中，请稍候')
     }
-    
+
     isSyncing = true
-    
+
     try {
         // 拉取云端数据
         const remoteData = await pullDataFromCloud()
-        
+
         // 获取本地数据
         const localPosts = getPosts()
         const localMessages = getMessages()
-        
+
         let finalPosts = localPosts
         let finalMessages = localMessages
         let needPush = false
-        
+
         if (remoteData) {
             // 合并文章数据（以 ID 为准，保留最新的）
             const postsMap = new Map()
-            
+
             // 先添加远程数据
             remoteData.posts.forEach(p => postsMap.set(p.id, p))
-            
+
             // 再添加本地数据（会覆盖相同 ID 的远程数据）
             localPosts.forEach(p => {
                 const existing = postsMap.get(p.id)
@@ -429,25 +460,25 @@ async function syncData(showNotification = false) {
                     postsMap.set(p.id, p)
                 }
             })
-            
+
             finalPosts = Array.from(postsMap.values())
-            
+
             // 合并留言数据（按时间戳去重）
             const messagesMap = new Map()
             remoteData.messages.forEach(m => messagesMap.set(m.t, m))
             localMessages.forEach(m => messagesMap.set(m.t, m))
             finalMessages = Array.from(messagesMap.values()).sort((a, b) => b.t - a.t)
-            
+
             // 检查是否需要推送
-            needPush = finalPosts.length !== remoteData.posts.length || 
-                       finalMessages.length !== remoteData.messages.length ||
-                       JSON.stringify(finalPosts) !== JSON.stringify(remoteData.posts) ||
-                       JSON.stringify(finalMessages) !== JSON.stringify(remoteData.messages)
-            
+            needPush = finalPosts.length !== remoteData.posts.length ||
+                finalMessages.length !== remoteData.messages.length ||
+                JSON.stringify(finalPosts) !== JSON.stringify(remoteData.posts) ||
+                JSON.stringify(finalMessages) !== JSON.stringify(remoteData.messages)
+
             // 保存合并后的数据到本地（不触发自动同步）
             localStorage.setItem('myblog_posts', JSON.stringify(finalPosts))
             localStorage.setItem('myblog_msgs', JSON.stringify(finalMessages))
-            
+
             // 如果有新数据，推送到云端
             if (needPush) {
                 await pushDataToCloud(finalPosts, finalMessages)
@@ -456,7 +487,7 @@ async function syncData(showNotification = false) {
             // 远程没有数据，直接推送本地数据
             await pushDataToCloud(finalPosts, finalMessages)
         }
-        
+
         lastSyncTime = Date.now()
         return true
     } catch (e) {
@@ -471,17 +502,17 @@ async function syncData(showNotification = false) {
 function showNotification(message, type = 'info') {
     const existing = document.getElementById('sync-status')
     if (existing) existing.remove()
-    
+
     const status = document.createElement('div')
     status.id = 'sync-status'
     status.className = `sync-status sync-${type}`
     status.textContent = message
     document.body.appendChild(status)
-    
+
     setTimeout(() => {
         status.classList.add('show')
     }, 10)
-    
+
     setTimeout(() => {
         status.classList.remove('show')
         setTimeout(() => status.remove(), 300)
@@ -499,7 +530,7 @@ function getPosts() {
     try { return JSON.parse(raw) } catch (e) { return sampleArticles.slice() }
 }
 
-function savePosts(posts) { 
+function savePosts(posts) {
     localStorage.setItem('myblog_posts', JSON.stringify(posts))
 }
 
@@ -662,10 +693,10 @@ async function uploadFileToRepo(post, token) {
 
     const contentBase64 = toBase64(content)
     const result = await uploadContentToRepo(targetPath, contentBase64, token, `Update post: ${post.title}`)
-    
+
     // 更新文章的 lastModified 时间戳
     post.lastModified = Date.now()
-    
+
     return result
 }
 
@@ -731,7 +762,7 @@ async function renderEditPage(id) {
         await customAlert('文章未找到')
         return
     }
-    
+
     // 获取保存的 GitHub Token
     const savedToken = getGitHubToken()
 
@@ -753,7 +784,7 @@ async function renderEditPage(id) {
                 <button id="cancel-md" style="padding:8px 16px;border-radius:6px;cursor:pointer">❌ 取消</button>
             </div>
             <div style="padding:12px;background:#e3f2fd;border-radius:6px;font-size:13px;color:#1565c0">
-                💡 <strong>提示</strong>：输入 GitHub Token 后，文章内容和图片会自动上传到 GitHub，节省 JSONBin 空间，支持更多文章。
+                💡 <strong>提示</strong>：输入 GitHub Token 后，文章内容和图片会自动上传到 GitHub，节省Supabase空间，支持更多文章。
             </div>
         </div>
     </section>`
@@ -797,11 +828,11 @@ async function renderEditPage(id) {
         if (post.content) {
             quill.root.innerHTML = post.content
         }
-        } catch (e) {
+    } catch (e) {
         console.error('Quill init failed', e)
         await customAlert('编辑器加载失败，请刷新页面重试')
         return
-        }
+    }
 
     if ((!post.content || post.content.trim() === '') && post.repoPath) {
         fetchRawFile(post.repoPath).then(txt => {
@@ -845,13 +876,13 @@ async function renderEditPage(id) {
                 const res = await uploadFileToRepo(posts[idx], token)
                 posts[idx].repoSha = res.sha
                 posts[idx].repoPath = res.path
-                
+
                 // 清空本地 content，节省 JSONBin 空间
                 const localContent = posts[idx].content
                 posts[idx].content = '' // 内容已在 GitHub，本地不存
-                
+
                 savePosts(posts)
-                
+
                 // 同步到云端
                 try {
                     await syncData(false)
@@ -918,8 +949,8 @@ async function renderEditPage(id) {
                     savePosts(posts)
                     await customAlert('✅ 已删除本地文章\n\n⚠️ GitHub 上的文件未删除', '删除成功')
                 } else {
-                return
-            }
+                    return
+                }
             }
         } else {
             posts.splice(idx, 1)
@@ -1035,7 +1066,7 @@ function renderCategories(root, selectedCat) {
         categoriesEl.addEventListener('click', function (e) {
             if (e.target.classList.contains('cat-btn')) {
                 const catKey = e.target.dataset.cat
-        location.hash = 'categories-' + encodeURIComponent(catKey)
+                location.hash = 'categories-' + encodeURIComponent(catKey)
             }
         })
     }
@@ -1102,8 +1133,8 @@ function renderPostsForCategory(cat) {
             const id = +target.dataset.id
             deletePost(id)
         } else if (card) {
-        const id = card.dataset.id
-        location.hash = 'post-' + id
+            const id = card.dataset.id
+            location.hash = 'post-' + id
         }
     }
 
@@ -1186,7 +1217,7 @@ function loadMessages() {
     const deleteHandler = function (e) {
         if (e.target.classList.contains('del-btn')) {
             const idx = +e.target.dataset.idx
-        tryDelete(idx)
+            tryDelete(idx)
         }
     }
 
@@ -1220,7 +1251,7 @@ async function postMessage() {
 
     msgs.unshift({ nick, text, t: Date.now(), pwd: pwd })
     saveMessages(msgs)
-    
+
     // 同步到云端
     try {
         await syncData(false)
@@ -1248,7 +1279,7 @@ async function tryDelete(idx) {
     if (input === MASTER || (m.pwd && input === m.pwd)) {
         const deletedMsg = msgs.splice(idx, 1)[0]
         saveMessages(msgs)
-        
+
         // 同步到云端
         try {
             await syncData(false)
@@ -1369,12 +1400,12 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                 content: '',
                 lastModified: Date.now()
             }
-            
+
             // 如果配置了 GitHub Token，保存 Token 到本地
             if (useRemote && tokenVal) {
                 setGitHubToken(tokenVal)
             }
-            
+
             const posts = getPosts()
             posts.unshift(newPost)
             savePosts(posts)
@@ -1421,12 +1452,12 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
             posts[idx].desc = desc.value.trim()
             posts[idx].category = cat.value
             posts[idx].lastModified = Date.now()
-            
+
             // 如果配置了 GitHub Token，保存 Token 到本地
             if (useRemote && tokenVal) {
                 setGitHubToken(tokenVal)
             }
-            
+
             savePosts(posts)
             document.body.removeChild(backdrop)
             location.hash = 'edit-' + post.id
@@ -1469,14 +1500,14 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                     const safeName = Date.now() + '_' + file.name.replace(/[^a-z0-9.\-]/ig, '_')
                     const imagePath = `${folder}/${safeName}`
 
-                        await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
+                    await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
                     coverUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${imagePath}`
                 } catch (err) {
                     await customAlert('封面上传失败：' + err.message, '上传失败')
                     console.error(err)
                     return
                 }
-                    }
+            }
 
             const newPost = {
                 id,
@@ -1517,7 +1548,7 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
                     const safeName = Date.now() + '_' + file.name.replace(/[^a-z0-9.\-]/ig, '_')
                     const imagePath = `${folder}/${safeName}`
 
-                        await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
+                    await uploadContentToRepo(imagePath, base64, tokenVal, `Upload cover ${safeName}`)
                     coverUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/${imagePath}`
                 } catch (err) {
                     await customAlert('封面上传失败：' + err.message, '上传失败')
@@ -1547,7 +1578,7 @@ function openEditor({ mode = 'create', type = 'article', post = null } = {}) {
 
                             // 上传新文件（如果有内容）
                             if (posts[idx].content) {
-                    const res = await uploadFileToRepo(posts[idx], tokenVal)
+                                const res = await uploadFileToRepo(posts[idx], tokenVal)
                                 posts[idx].repoSha = res.sha
                                 posts[idx].repoPath = res.path
                                 await customAlert('✅ GitHub 同步成功！\n\n旧文件已删除，新文件已创建\n路径：' + res.path, '同步成功')
@@ -1617,7 +1648,7 @@ async function deletePost(id) {
                     savePosts(posts)
                     await customAlert('✅ 已删除本地文章\n\n⚠️ GitHub 上的文件未删除', '删除成功')
                 }
-    }
+            }
         } else {
             // 仅删除本地
             posts.splice(idx, 1)
@@ -1666,7 +1697,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==================== 强制清除缓存机制 ====================
     const cachedVersion = localStorage.getItem('app_version')
     const isNewVersion = cachedVersion !== APP_VERSION
-    
+
     if (isNewVersion) {
         console.log('🔄 检测到新版本:', APP_VERSION, '正在清除旧缓存...')
         localStorage.setItem('app_version', APP_VERSION)
@@ -1702,7 +1733,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (savedRecordId) {
         dataRecordId = savedRecordId
     }
-    
+
     console.log('📡 正在从云端同步数据...')
     syncData(false).then(() => {
         console.log('✅ 数据同步成功')
@@ -1771,14 +1802,14 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) {
             console.log('👁️ 页面重新可见，检查更新...')
-            
+
             // 检查 Service Worker 更新
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.getRegistration().then(reg => {
                     if (reg) reg.update()
                 })
             }
-            
+
             // 同步数据
             syncData(false).then(() => {
                 router() // 刷新页面显示最新数据
@@ -1787,14 +1818,14 @@ document.addEventListener('DOMContentLoaded', () => {
             })
         }
     })
-    
+
     // ==================== 页面关闭前同步数据 ====================
     window.addEventListener('beforeunload', () => {
         // 清除定时器
         if (syncInterval) {
             clearInterval(syncInterval)
         }
-        
+
         // 尝试最后一次同步（使用 sendBeacon）
         const posts = getPosts()
         const messages = getMessages()
@@ -1804,7 +1835,7 @@ document.addEventListener('DOMContentLoaded', () => {
             lastModified: Date.now(),
             version: APP_VERSION
         }
-        
+
         // Supabase 不支持 sendBeacon，跳过
     })
 
@@ -1812,14 +1843,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const langBtn = document.getElementById('langBtn')
     if (langBtn) {
         langBtn.addEventListener('click', () => {
-        currentLang = currentLang === 'zh' ? 'en' : 'zh'
+            currentLang = currentLang === 'zh' ? 'en' : 'zh'
             langBtn.innerText = currentLang === 'zh' ? 'EN' : '中文'
-        router()
+            router()
             document.querySelectorAll('.nav-item').forEach(a => {
                 const k = a.dataset.key
                 a.innerText = t(k)
             })
-    })
+        })
     }
 
     // 初始化导航文本
@@ -1830,7 +1861,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 设置背景
     setBackground()
-    
+
     // 路由监听
     window.addEventListener('hashchange', router)
 })
