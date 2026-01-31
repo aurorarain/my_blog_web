@@ -711,3 +711,49 @@ button:active {
         border: 1px solid #ddd;
     }
 }
+
+/* 同步状态提示 */
+.sync-status {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 9998;
+    opacity: 0;
+    transform: translateX(400px);
+    transition: all 0.3s ease;
+}
+
+.sync-status.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.sync-status.sync-info {
+    background: #0969da;
+    color: white;
+}
+
+.sync-status.sync-success {
+    background: #2da44e;
+    color: white;
+}
+
+.sync-status.sync-error {
+    background: #cf222e;
+    color: white;
+}
+
+/* 响应式同步状态 */
+@media (max-width: 720px) {
+    .sync-status {
+        top: 70px;
+        right: 10px;
+        left: 10px;
+        text-align: center;
+    }
+}
