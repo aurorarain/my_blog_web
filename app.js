@@ -1,3 +1,5 @@
+//230行文章后端添加区
+
 // 配置区
 const APP_VERSION = '1.1.0' // 版本号，更新后会清除旧缓存
 const BG_IMAGE = 'background.png'
@@ -10,6 +12,7 @@ const USER_CONTACT = [
     { type: 'Email', value: '1839735394@qq.com' },
     { type: 'GitHub', value: 'https://github.com/aurorarain' }
 ]
+
 
 // ==================== Supabase 数据存储配置（必需配置）====================
 // 用途：存储文章元数据、留言数据，实现跨设备同步
@@ -222,9 +225,14 @@ function setBackground() {
     }
 }
 
+
 // 数据存储
 const MASTER = 'jzh0128'
-const sampleArticles = [] // 移除示例文章，避免占位图片加载失败
+
+
+const sampleArticles = [] // 移除示例文章，避免重复添加
+
+
 
 // 同步状态
 let isSyncing = false
@@ -422,8 +430,8 @@ async function pushDataToCloud(posts, messages) {
     }
 }
 
-// 同步数据（智能合并本地和云端）
-async function syncData(showNotification = false) {
+// 同步数据（智能合并本地和云端，优先本地数据）
+async function syncData(pushOnly = false) {
     if (isSyncing) {
         console.log('Sync already in progress')
         throw new Error('同步正在进行中，请稍候')
@@ -432,28 +440,39 @@ async function syncData(showNotification = false) {
     isSyncing = true
 
     try {
-        // 拉取云端数据
-        const remoteData = await pullDataFromCloud()
-
         // 获取本地数据
         const localPosts = getPosts()
         const localMessages = getMessages()
+        
+        // 如果是仅推送模式（删除操作），直接推送本地数据
+        if (pushOnly) {
+            await pushDataToCloud(localPosts, localMessages)
+            lastSyncTime = Date.now()
+            return true
+        }
+
+        // 拉取云端数据
+        const remoteData = await pullDataFromCloud()
 
         let finalPosts = localPosts
         let finalMessages = localMessages
         let needPush = false
 
         if (remoteData) {
-            // 合并文章数据（以 ID 为准，保留最新的）
+            // 合并文章数据（优先使用本地数据，除非云端有更新的版本）
             const postsMap = new Map()
 
-            // 先添加远程数据
-            remoteData.posts.forEach(p => postsMap.set(p.id, p))
+            // 先添加本地数据
+            localPosts.forEach(p => postsMap.set(p.id, p))
 
-            // 再添加本地数据（会覆盖相同 ID 的远程数据）
-            localPosts.forEach(p => {
+            // 再检查远程数据，只添加本地没有的或更新的
+            remoteData.posts.forEach(p => {
                 const existing = postsMap.get(p.id)
-                if (!existing || !existing.lastModified || (p.lastModified && p.lastModified > existing.lastModified)) {
+                if (!existing) {
+                    // 本地没有，添加远程数据
+                    postsMap.set(p.id, p)
+                } else if (p.lastModified && existing.lastModified && p.lastModified > existing.lastModified) {
+                    // 远程更新，使用远程数据
                     postsMap.set(p.id, p)
                 }
             })
@@ -462,22 +481,27 @@ async function syncData(showNotification = false) {
 
             // 合并留言数据（按时间戳去重）
             const messagesMap = new Map()
-            remoteData.messages.forEach(m => messagesMap.set(m.t, m))
             localMessages.forEach(m => messagesMap.set(m.t, m))
+            remoteData.messages.forEach(m => {
+                if (!messagesMap.has(m.t)) {
+                    messagesMap.set(m.t, m)
+                }
+            })
             finalMessages = Array.from(messagesMap.values()).sort((a, b) => b.t - a.t)
 
             // 检查是否需要推送
             needPush = finalPosts.length !== remoteData.posts.length ||
                 finalMessages.length !== remoteData.messages.length ||
-                JSON.stringify(finalPosts) !== JSON.stringify(remoteData.posts) ||
-                JSON.stringify(finalMessages) !== JSON.stringify(remoteData.messages)
+                JSON.stringify(finalPosts.map(p => p.id).sort()) !== JSON.stringify(remoteData.posts.map(p => p.id).sort()) ||
+                JSON.stringify(finalMessages.map(m => m.t).sort()) !== JSON.stringify(remoteData.messages.map(m => m.t).sort())
 
-            // 保存合并后的数据到本地（不触发自动同步）
+            // 保存合并后的数据到本地
             localStorage.setItem('myblog_posts', JSON.stringify(finalPosts))
             localStorage.setItem('myblog_msgs', JSON.stringify(finalMessages))
 
             // 如果有新数据，推送到云端
             if (needPush) {
+                console.log('🔄 检测到数据变化，推送到云端')
                 await pushDataToCloud(finalPosts, finalMessages)
             }
         } else {
@@ -880,9 +904,9 @@ async function renderEditPage(id) {
 
                 savePosts(posts)
 
-                // 同步到云端
+                // 同步到云端（仅推送模式）
                 try {
-                    await syncData(false)
+                    await syncData(true)
                     // 恢复 content 到内存（用于立即显示）
                     posts[idx].content = localContent
                     showNotification('✅ 文章保存成功！', 'success')
@@ -959,9 +983,9 @@ async function renderEditPage(id) {
                     posts.splice(idx, 1)
                     savePosts(posts)
                     
-                    // 同步到云端
+                    // 同步到云端（仅推送模式）
                     try {
-                        await syncData(false)
+                        await syncData(true)
                         showNotification('✅ 本地文章删除成功！', 'success')
                         location.hash = 'categories'
                     } catch (syncErr) {
@@ -978,9 +1002,9 @@ async function renderEditPage(id) {
             posts.splice(idx, 1)
             savePosts(posts)
             
-            // 同步到云端
+            // 同步到云端（仅推送模式）
             try {
-                await syncData(false)
+                await syncData(true)
                 showNotification('✅ 文章删除成功！', 'success')
                 location.hash = 'categories'
             } catch (e) {
@@ -1058,11 +1082,9 @@ function renderPage(page) {
 function renderHome(root) {
     const name = currentLang === 'zh' ? USER_NAME_ZH : USER_NAME_EN
     const bio = currentLang === 'zh' ? USER_BIO_ZH : USER_BIO_EN
-    const avatarUrl = USER_PHOTO || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23e0e0e0" width="400" height="400"/%3E%3Ctext fill="%23999" font-family="sans-serif" font-size="24" dy="10.5" font-weight="bold" x="50%25" y="50%25" text-anchor="middle"%3E头像%3C/text%3E%3C/svg%3E'
-    
     root.innerHTML = `
         <section class="card home-grid">
-            <img class="avatar" src="${avatarUrl}" alt="avatar" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'400\\' height=\\'400\\'%3E%3Crect fill=\\'%23e0e0e0\\' width=\\'400\\' height=\\'400\\'/%3E%3Ctext fill=\\'%23999\\' font-family=\\'sans-serif\\' font-size=\\'24\\' dy=\\'10.5\\' font-weight=\\'bold\\' x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\'%3E头像%3C/text%3E%3C/svg%3E'">
+            <img class="avatar" src="${USER_PHOTO || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22400%22%3E%3Crect fill=%22%23ddd%22 width=%22400%22 height=%22400%22/%3E%3Ctext fill=%22%23999%22 font-family=%22sans-serif%22 font-size=%2224%22 dy=%2210.5%22 font-weight=%22bold%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22%3E%E5%A4%B4%E5%83%8F%3C/text%3E%3C/svg%3E'}" alt="avatar">
             <div>
                 <h2>${name}</h2>
                 <p>${bio}</p>
@@ -1132,22 +1154,17 @@ function renderPostsForCategory(cat) {
     // 使用 DocumentFragment 减少 DOM 重绘
     const fragment = document.createDocumentFragment()
     const tempDiv = document.createElement('div')
-    tempDiv.innerHTML = posts.map(p => {
-        // 使用默认封面或自定义封面
-        const coverUrl = p.cover || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="320" height="180"%3E%3Crect fill="%23f0f0f0" width="320" height="180"/%3E%3Ctext fill="%23999" font-family="sans-serif" font-size="16" dy="10.5" font-weight="bold" x="50%25" y="50%25" text-anchor="middle"%3E暂无封面%3C/text%3E%3C/svg%3E'
-        
-        return `<div class="post card" data-id="${p.id}">
-            <img src="${coverUrl}" alt="${escapeHtml(p.title)}" loading="lazy" onload="this.classList.add('loaded')" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'320\\' height=\\'180\\'%3E%3Crect fill=\\'%23f0f0f0\\' width=\\'320\\' height=\\'180\\'/%3E%3Ctext fill=\\'%23999\\' font-family=\\'sans-serif\\' font-size=\\'16\\' dy=\\'10.5\\' font-weight=\\'bold\\' x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\'%3E加载失败%3C/text%3E%3C/svg%3E'">
-            <div>
-                <h4 class="post-title">${escapeHtml(p.title)}</h4>
-                <p class="post-desc">${escapeHtml(p.desc)}</p>
-            </div>
-            <div style="margin-left:auto">
-                <button class="edit-post" data-id="${p.id}">${t('post.edit')}</button>
-                <button class="del-post" data-id="${p.id}">${t('post.delete')}</button>
-            </div>
-        </div>`
-    }).join('')
+    tempDiv.innerHTML = posts.map(p => `<div class="post card" data-id="${p.id}">
+        <img src="${p.cover || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22320%22 height=%22180%22%3E%3Crect fill=%22%23ddd%22 width=%22320%22 height=%22180%22/%3E%3Ctext fill=%22%23999%22 font-family=%22sans-serif%22 font-size=%2218%22 dy=%2210.5%22 font-weight=%22bold%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22%3E%E6%97%A0%E5%B0%81%E9%9D%A2%3C/text%3E%3C/svg%3E'}" alt="${escapeHtml(p.title)}" loading="lazy" onload="this.classList.add('loaded')">
+        <div>
+            <h4 class="post-title">${escapeHtml(p.title)}</h4>
+            <p class="post-desc">${escapeHtml(p.desc)}</p>
+        </div>
+        <div style="margin-left:auto">
+            <button class="edit-post" data-id="${p.id}">${t('post.edit')}</button>
+            <button class="del-post" data-id="${p.id}">${t('post.delete')}</button>
+        </div>
+    </div>`).join('')
 
     while (tempDiv.firstChild) {
         fragment.appendChild(tempDiv.firstChild)
@@ -1318,9 +1335,9 @@ async function tryDelete(idx) {
         const deletedMsg = msgs.splice(idx, 1)[0]
         saveMessages(msgs)
 
-        // 同步到云端
+        // 同步到云端（仅推送模式）
         try {
-            await syncData(false)
+            await syncData(true)
             loadMessages()
             showNotification('✅ 留言删除成功！', 'success')
         } catch (e) {
